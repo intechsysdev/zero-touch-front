@@ -173,6 +173,75 @@ button:disabled {
   color: var(--muted);
 }
 
+.success-banner {
+  background: #e4f8eb;
+  border: 1px solid #9ccfad;
+  color: #184b29;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+textarea:focus {
+  outline: 2px solid rgba(47, 143, 131, 0.25);
+  border-color: var(--accent);
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.field-block {
+  display: grid;
+  gap: 8px;
+}
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.segmented {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #e8f1ec;
+}
+
+.tab-btn {
+  background: transparent;
+  color: #23464d;
+}
+
+.tab-btn.active {
+  background: linear-gradient(135deg, var(--accent) 0, var(--accent-strong) 100%);
+  color: #f7fffd;
+}
+
+.qr-box {
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #f8fcf9;
+}
+
 .table-wrap {
   overflow-x: auto;
 }

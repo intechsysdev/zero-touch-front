@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
+import BarcodeScannerComponent from 'react-qr-barcode-scanner';
 
 type AuthSession = {
   accessToken: string;
@@ -35,6 +36,21 @@ type ManagedDevice = {
   serialNumber?: string;
   createdAt?: string;
   ownerCompanyId?: string;
+};
+
+type IdentifierType = 'imei' | 'serial';
+
+type IdentifierOptionsResponse = {
+  manufacturers?: string[];
+  modelsByManufacturer?: Record<string, string[]>;
+};
+
+type BulkClaimResponse = {
+  summary?: {
+    total?: number;
+    successCount?: number;
+    failedCount?: number;
+  };
 };
 
 const BACKEND_BASE_URL =
@@ -105,6 +121,99 @@ function mapDevice(raw: RawDevice): ManagedDevice {
   };
 }
 
+function mergeUnique(values: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const item of values) {
+    const normalized = item.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    unique.push(normalized);
+  }
+  return unique;
+}
+
+function parseIdentifiers(text: string): string[] {
+  return mergeUnique(text.split(/[\s,;]+/g).map((item) => item.trim()));
+}
+
+function splitSimpleCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let buffer = '';
+  let insideQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"') {
+      if (insideQuotes && i + 1 < line.length && line[i + 1] === '"') {
+        buffer += '"';
+        i += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !insideQuotes) {
+      values.push(buffer.trim());
+      buffer = '';
+    } else {
+      buffer += char;
+    }
+  }
+
+  values.push(buffer.trim());
+  return values;
+}
+
+function extractFromCsvLikeText(source: string, identifierType: IdentifierType): string[] {
+  const lines = source
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const header = splitSimpleCsvLine(lines[0]).map((item) => item.toLowerCase());
+  const hasHeader = header.some((item) => ['modemid', 'imei', 'serial', 'serialnumber'].includes(item));
+  if (!hasHeader) {
+    return parseIdentifiers(source);
+  }
+
+  const indexOf = (key: string) => header.indexOf(key);
+  const modemIdIndex = indexOf('modemid');
+  const imeiIndex = indexOf('imei');
+  const serialIndex = indexOf('serial');
+  const serialNumberIndex = indexOf('serialnumber');
+
+  const extracted: string[] = [];
+  for (const line of lines.slice(1)) {
+    const columns = splitSimpleCsvLine(line);
+
+    if (identifierType === 'imei') {
+      for (const index of [modemIdIndex, imeiIndex]) {
+        if (index >= 0 && index < columns.length && columns[index].trim()) {
+          extracted.push(columns[index].trim());
+          break;
+        }
+      }
+    } else {
+      for (const index of [serialIndex, serialNumberIndex]) {
+        if (index >= 0 && index < columns.length && columns[index].trim()) {
+          extracted.push(columns[index].trim());
+          break;
+        }
+      }
+    }
+  }
+
+  return mergeUnique(extracted);
+}
+
 function App() {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -114,20 +223,25 @@ function App() {
   const [email, setEmail] = useState('');
   const [clientId, setClientId] = useState('');
 
-  const [imei, setImei] = useState('');
-  const [serialNumber, setSerialNumber] = useState('');
-  const [manufacturer, setManufacturer] = useState('');
-  const [model, setModel] = useState('');
-  const [assignedArea, setAssignedArea] = useState('');
+  const [successText, setSuccessText] = useState('');
+  const [identifierType, setIdentifierType] = useState<IdentifierType>('imei');
+  const [bulkIdentifiersText, setBulkIdentifiersText] = useState('');
+  const [bulkManufacturer, setBulkManufacturer] = useState('');
+  const [bulkModel, setBulkModel] = useState('');
+  const [bulkConfigurationId, setBulkConfigurationId] = useState('');
+  const [availableManufacturers, setAvailableManufacturers] = useState<string[]>([]);
+  const [modelsByManufacturer, setModelsByManufacturer] = useState<Record<string, string[]>>({});
+  const [scannerOpen, setScannerOpen] = useState(false);
 
-  const canCreate = useMemo(() => {
-    const hasImei = imei.trim().length > 0;
-    const hasSerialSet =
-      serialNumber.trim().length > 0 &&
-      manufacturer.trim().length > 0 &&
-      model.trim().length > 0;
-    return hasImei || hasSerialSet;
-  }, [imei, serialNumber, manufacturer, model]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const parsedIdentifiers = useMemo(() => parseIdentifiers(bulkIdentifiersText), [bulkIdentifiersText]);
+  const canCreate = parsedIdentifiers.length > 0 &&
+    (identifierType === 'imei' || (bulkManufacturer.trim().length > 0 && bulkModel.trim().length > 0));
+
+  const selectedModels = useMemo(
+    () => modelsByManufacturer[bulkManufacturer] || [],
+    [bulkManufacturer, modelsByManufacturer]
+  );
 
   useEffect(() => {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -149,7 +263,34 @@ function App() {
       return;
     }
     void loadDevices(true);
+    void loadIdentifierOptions(true);
   }, [session]);
+
+  async function loadIdentifierOptions(forceSync: boolean) {
+    if (!session) {
+      return;
+    }
+
+    try {
+      const query = forceSync ? '?forceSync=true' : '';
+      const data = await apiRequest<IdentifierOptionsResponse>(
+        `/zerotouch/devices/identifier-options${query}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+          },
+        }
+      );
+
+      const manufacturers = Array.isArray(data.manufacturers)
+        ? data.manufacturers.filter(Boolean)
+        : [];
+      setAvailableManufacturers(manufacturers);
+      setModelsByManufacturer(data.modelsByManufacturer || {});
+    } catch (error) {
+      setErrorText(getErrorMessage(error));
+    }
+  }
 
   async function loadDevices(forceSync: boolean) {
     if (!session) {
@@ -212,7 +353,62 @@ function App() {
     setSession(null);
     setDevices([]);
     setErrorText('');
+    setSuccessText('');
+    setAvailableManufacturers([]);
+    setModelsByManufacturer({});
     localStorage.removeItem(SESSION_KEY);
+  }
+
+  function appendIdentifier(value: string) {
+    const merged = mergeUnique([...parsedIdentifiers, value]);
+    setBulkIdentifiersText(merged.join('\n'));
+  }
+
+  function downloadTemplateCsv() {
+    if (!session) {
+      return;
+    }
+
+    const owner = session.zeroTouchCustomerId || session.clientId;
+    const csv =
+      identifierType === 'imei'
+        ? `modemtype,modemid,profiletype,owner\nIMEI,123456789012345,ZERO_TOUCH,${owner}\nIMEI,234567890123456,ZERO_TOUCH,${owner}\n`
+        : `serial,model,manufacturer,profiletype,owner\nSN-001,SM-A155M,Samsung,ZERO_TOUCH,${owner}\nSN-002,Redmi-12,Xiaomi,ZERO_TOUCH,${owner}\n`;
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `zt-template-${identifierType}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const content = await file.text();
+      const imported = extractFromCsvLikeText(content, identifierType);
+      if (imported.length === 0) {
+        setErrorText('No se detectaron identificadores validos en el archivo.');
+        return;
+      }
+
+      const merged = mergeUnique([...parsedIdentifiers, ...imported]);
+      setBulkIdentifiersText(merged.join('\n'));
+      setSuccessText(`Importados ${imported.length} registros. Total actual: ${merged.length}.`);
+      setErrorText('');
+    } catch {
+      setErrorText('No fue posible leer el archivo.');
+    } finally {
+      event.target.value = '';
+    }
   }
 
   async function handleCreateDevice(event: FormEvent<HTMLFormElement>) {
@@ -221,52 +417,50 @@ function App() {
       return;
     }
 
-    const imeiValue = imei.trim();
-    const serialValue = serialNumber.trim();
-    const manufacturerValue = manufacturer.trim();
-    const modelValue = model.trim();
-
-    const hasImei = imeiValue.length > 0;
-    const hasSerialSet =
-      serialValue.length > 0 &&
-      manufacturerValue.length > 0 &&
-      modelValue.length > 0;
-
-    if (!hasImei && !hasSerialSet) {
-      setErrorText('Usa IMEI o Serial Number + Manufacturer + Model.');
+    if (parsedIdentifiers.length === 0) {
+      setErrorText('Agrega al menos un identificador.');
       return;
     }
 
-    const deviceIdentifier: DeviceIdentifier = hasImei
-      ? { imei: imeiValue }
-      : {
-          serialNumber: serialValue,
-          manufacturer: manufacturerValue,
-          model: modelValue,
-        };
+    if (identifierType === 'serial' && (!bulkManufacturer.trim() || !bulkModel.trim())) {
+      setErrorText('Para serial debes indicar marca y modelo.');
+      return;
+    }
+
+    const devicesPayload =
+      identifierType === 'imei'
+        ? parsedIdentifiers.map((value) => ({ imei: value }))
+        : parsedIdentifiers.map((value) => ({
+            serialNumber: value,
+            manufacturer: bulkManufacturer.trim(),
+            model: bulkModel.trim(),
+          }));
 
     setIsBusy(true);
     setErrorText('');
+    setSuccessText('');
     try {
-      await apiRequest('/zerotouch/devices/claim', {
+      const response = await apiRequest<BulkClaimResponse>('/zerotouch/devices/claim/bulk', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
         },
         body: JSON.stringify({
           customerId: session.zeroTouchCustomerId || session.clientId,
-          deviceIdentifier,
-          label: assignedArea.trim() || undefined,
+          identifierType,
+          configurationId: bulkConfigurationId.trim() || undefined,
+          devices: devicesPayload,
         }),
       });
 
-      setImei('');
-      setSerialNumber('');
-      setManufacturer('');
-      setModel('');
-      setAssignedArea('');
+      const total = response.summary?.total ?? parsedIdentifiers.length;
+      const ok = response.summary?.successCount ?? 0;
+      const failed = response.summary?.failedCount ?? Math.max(0, total - ok);
+
+      setSuccessText(`Carga finalizada: ${ok}/${total} exitosos, ${failed} fallidos.`);
 
       await loadDevices(true);
+      await loadIdentifierOptions(false);
     } catch (error) {
       setErrorText(getErrorMessage(error));
     } finally {
@@ -328,6 +522,7 @@ function App() {
       </header>
 
       {errorText ? <div className="error-banner">{errorText}</div> : null}
+      {successText ? <div className="success-banner">{successText}</div> : null}
 
       {!session ? (
         <section className="panel login-panel">
@@ -384,54 +579,138 @@ function App() {
           </section>
 
           <section className="panel">
-            <h2>Crear dispositivo</h2>
+            <h2>Carga masiva de dispositivos</h2>
             <form onSubmit={handleCreateDevice} className="form-grid form-grid-create">
-              <label>
-                IMEI (opcional)
+              <div className="field-block full-width">
+                <p className="label">Tipo de identificador</p>
+                <div className="segmented">
+                  <button
+                    className={identifierType === 'imei' ? 'tab-btn active' : 'tab-btn'}
+                    type="button"
+                    onClick={() => setIdentifierType('imei')}
+                  >
+                    IMEI
+                  </button>
+                  <button
+                    className={identifierType === 'serial' ? 'tab-btn active' : 'tab-btn'}
+                    type="button"
+                    onClick={() => setIdentifierType('serial')}
+                  >
+                    Serial + Marca + Modelo
+                  </button>
+                </div>
+              </div>
+              <div className="field-block full-width inline-actions">
+                <button
+                  className="ghost-btn"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isBusy}
+                >
+                  Importar CSV/TXT
+                </button>
+                <button
+                  className="ghost-btn"
+                  type="button"
+                  onClick={downloadTemplateCsv}
+                  disabled={isBusy}
+                >
+                  Descargar plantilla CSV
+                </button>
+                {identifierType === 'imei' ? (
+                  <button
+                    className="ghost-btn"
+                    type="button"
+                    onClick={() => setScannerOpen((value) => !value)}
+                  >
+                    {scannerOpen ? 'Cerrar lector QR' : 'Abrir lector QR'}
+                  </button>
+                ) : null}
                 <input
-                  value={imei}
-                  onChange={(event) => setImei(event.target.value)}
-                  placeholder="354612454006911"
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.txt,text/csv,text/plain"
+                  onChange={handleImportFile}
+                  className="hidden-input"
+                />
+              </div>
+              {scannerOpen && identifierType === 'imei' ? (
+                <div className="qr-box full-width">
+                  <BarcodeScannerComponent
+                    width={480}
+                    height={280}
+                    onUpdate={(_, result) => {
+                      const value = result?.getText?.()?.trim() || '';
+                      if (!value) {
+                        return;
+                      }
+                      appendIdentifier(value);
+                    }}
+                  />
+                  <p className="hint">Escanea uno o varios codigos para agregar IMEIs al lote.</p>
+                </div>
+              ) : null}
+              <label>
+                {identifierType === 'imei'
+                  ? 'IMEI(s): uno por linea o por coma'
+                  : 'Serial(es): uno por linea o por coma'}
+                <textarea
+                  value={bulkIdentifiersText}
+                  onChange={(event) => setBulkIdentifiersText(event.target.value)}
+                  placeholder={
+                    identifierType === 'imei'
+                      ? '354612454006911\n354612454006922\n...'
+                      : 'SN001\nSN002\n...'
+                  }
+                  rows={6}
                 />
               </label>
+              {identifierType === 'serial' ? (
+                <label>
+                  Marca
+                  <input
+                    list="manufacturer-options"
+                    value={bulkManufacturer}
+                    onChange={(event) => setBulkManufacturer(event.target.value)}
+                    placeholder="Samsung"
+                  />
+                  <datalist id="manufacturer-options">
+                    {availableManufacturers.map((item) => (
+                      <option key={item} value={item} />
+                    ))}
+                  </datalist>
+                </label>
+              ) : null}
+              {identifierType === 'serial' ? (
+                <label>
+                  Modelo
+                  <input
+                    list="model-options"
+                    value={bulkModel}
+                    onChange={(event) => setBulkModel(event.target.value)}
+                    placeholder="SM-A155M"
+                  />
+                  <datalist id="model-options">
+                    {selectedModels.map((item) => (
+                      <option key={item} value={item} />
+                    ))}
+                  </datalist>
+                </label>
+              ) : null}
               <label>
-                Serial Number
+                Configuration ID (opcional)
                 <input
-                  value={serialNumber}
-                  onChange={(event) => setSerialNumber(event.target.value)}
-                  placeholder="R58W1234ABC"
-                />
-              </label>
-              <label>
-                Manufacturer
-                <input
-                  value={manufacturer}
-                  onChange={(event) => setManufacturer(event.target.value)}
-                  placeholder="Samsung"
-                />
-              </label>
-              <label>
-                Model
-                <input
-                  value={model}
-                  onChange={(event) => setModel(event.target.value)}
-                  placeholder="SM-A155M"
-                />
-              </label>
-              <label>
-                Area/Usuario
-                <input
-                  value={assignedArea}
-                  onChange={(event) => setAssignedArea(event.target.value)}
-                  placeholder="Bodega"
+                  value={bulkConfigurationId}
+                  onChange={(event) => setBulkConfigurationId(event.target.value)}
+                  placeholder="123456789"
                 />
               </label>
               <button className="primary-btn" type="submit" disabled={!canCreate || isBusy}>
-                Crear en Zero-touch
+                {isBusy ? 'Procesando...' : 'Cargar lote en Zero-touch'}
               </button>
             </form>
             <p className="hint">
-              Debes ingresar IMEI, o el set completo Serial Number + Manufacturer + Model.
+              Detectados: {parsedIdentifiers.length} identificadores.
             </p>
           </section>
 

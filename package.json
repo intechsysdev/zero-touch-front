@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-qr-barcode-scanner": "^2.1.28"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
