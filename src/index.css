@@ -44,6 +44,18 @@ p {
   padding: 28px 18px 56px;
 }
 
+.app-shell.samsung-mode {
+  --accent: #0f53c0;
+  --accent-strong: #0a2f7c;
+  --card: #f7f9ff;
+  --line: #cdd8f6;
+  --shadow: 0 18px 42px rgba(10, 47, 124, 0.15);
+}
+
+.app-shell.samsung-mode .kicker {
+  color: #0a2f7c;
+}
+
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -124,6 +136,15 @@ input {
 input:focus {
   outline: 2px solid rgba(47, 143, 131, 0.25);
   border-color: var(--accent);
+}
+
+select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  padding: 8px 10px;
 }
 
 button {
@@ -244,6 +265,51 @@ textarea:focus {
 
 .table-wrap {
   overflow-x: auto;
+}
+
+.search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clear-search-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #eef5f1;
+  color: var(--muted);
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.pagination-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.pagination-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pagination-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pagination-page {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 table {

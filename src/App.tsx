@@ -5,9 +5,12 @@ import BarcodeScannerComponent from 'react-qr-barcode-scanner';
 type AuthSession = {
   accessToken: string;
   companyName: string;
-  email: string;
   clientId: string;
+  zeroTouchAvailable?: boolean;
+  samsungAvailable?: boolean;
   zeroTouchCustomerId?: string;
+  samsungCustomerId?: string;
+  preferredEnrollment?: 'zerotouch' | 'samsung';
 };
 
 type DeviceIdentifier = {
@@ -219,6 +222,10 @@ function App() {
   const [isBusy, setIsBusy] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [devices, setDevices] = useState<ManagedDevice[]>([]);
+  const [deviceSearch, setDeviceSearch] = useState('');
+  const [devicePageSize, setDevicePageSize] = useState(10);
+  const [devicePage, setDevicePage] = useState(1);
+  const [enrollmentPlatform, setEnrollmentPlatform] = useState<'zerotouch' | 'samsung'>('zerotouch');
 
   const [email, setEmail] = useState('');
   const [clientId, setClientId] = useState('');
@@ -243,6 +250,48 @@ function App() {
     [bulkManufacturer, modelsByManufacturer]
   );
 
+  const filteredDevices = useMemo(() => {
+    const query = deviceSearch.trim().toLowerCase();
+    if (!query) {
+      return devices;
+    }
+
+    return devices.filter((device) => {
+      const haystack = [
+        device.serialOrImei,
+        device.model,
+        device.manufacturer,
+        device.ownerCompanyId || '',
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(query);
+    });
+  }, [deviceSearch, devices]);
+
+  const totalPages = useMemo(() => {
+    if (filteredDevices.length === 0) {
+      return 1;
+    }
+    return Math.ceil(filteredDevices.length / devicePageSize);
+  }, [filteredDevices.length, devicePageSize]);
+
+  useEffect(() => {
+    setDevicePage(1);
+  }, [deviceSearch, devicePageSize]);
+
+  useEffect(() => {
+    if (devicePage > totalPages) {
+      setDevicePage(totalPages);
+    }
+  }, [devicePage, totalPages]);
+
+  const pagedDevices = useMemo(() => {
+    const start = (devicePage - 1) * devicePageSize;
+    return filteredDevices.slice(start, start + devicePageSize);
+  }, [filteredDevices, devicePage, devicePageSize]);
+
   useEffect(() => {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) {
@@ -252,6 +301,11 @@ function App() {
       const parsed = JSON.parse(raw) as AuthSession;
       if (parsed?.accessToken) {
         setSession(parsed);
+        if (parsed.preferredEnrollment === 'samsung' || parsed.samsungAvailable) {
+          setEnrollmentPlatform(
+            parsed.preferredEnrollment === 'zerotouch' ? 'zerotouch' : 'samsung'
+          );
+        }
       }
     } catch {
       localStorage.removeItem(SESSION_KEY);
@@ -263,8 +317,32 @@ function App() {
       return;
     }
     void loadDevices(true);
-    void loadIdentifierOptions(true);
-  }, [session]);
+    if (isSamsungMode) {
+      setAvailableManufacturers([]);
+      setModelsByManufacturer({});
+    } else {
+      void loadIdentifierOptions(true);
+    }
+  }, [session, enrollmentPlatform]);
+
+  const activeCustomerId =
+    enrollmentPlatform === 'samsung'
+      ? session?.samsungCustomerId || session?.clientId
+      : session?.zeroTouchCustomerId;
+
+  const isSamsungMode = enrollmentPlatform === 'samsung';
+
+  function pathForDevices() {
+    return isSamsungMode ? '/samsung/devices' : '/zerotouch/devices';
+  }
+
+  function pathForBulkClaim() {
+    return isSamsungMode ? '/samsung/devices/claim/bulk' : '/zerotouch/devices/claim/bulk';
+  }
+
+  function pathForUnclaim() {
+    return isSamsungMode ? '/samsung/devices/unclaim' : '/zerotouch/devices/unclaim';
+  }
 
   async function loadIdentifierOptions(forceSync: boolean) {
     if (!session) {
@@ -297,12 +375,23 @@ function App() {
       return;
     }
 
+    if (isSamsungMode && !activeCustomerId) {
+      return;
+    }
+
     setIsBusy(true);
     setErrorText('');
     try {
-      const query = forceSync ? '?forceSync=true' : '';
       const data = await apiRequest<{ devices: RawDevice[] }>(
-        `/zerotouch/devices${query}`,
+        `${pathForDevices()}${
+          activeCustomerId
+            ? `?customerId=${encodeURIComponent(activeCustomerId)}${
+                forceSync && !isSamsungMode ? '&forceSync=true' : ''
+              }`
+            : forceSync && !isSamsungMode
+              ? '?forceSync=true'
+              : ''
+        }`,
         {
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
@@ -352,10 +441,15 @@ function App() {
   function handleLogout() {
     setSession(null);
     setDevices([]);
+    setDeviceSearch('');
     setErrorText('');
     setSuccessText('');
     setAvailableManufacturers([]);
     setModelsByManufacturer({});
+    setDevicePage(1);
+    setDevicePageSize(10);
+    setEnrollmentPlatform('zerotouch');
+    setEmail('');
     localStorage.removeItem(SESSION_KEY);
   }
 
@@ -417,18 +511,27 @@ function App() {
       return;
     }
 
+    if (isSamsungMode && !activeCustomerId) {
+      return;
+    }
+
     if (parsedIdentifiers.length === 0) {
       setErrorText('Agrega al menos un identificador.');
       return;
     }
 
-    if (identifierType === 'serial' && (!bulkManufacturer.trim() || !bulkModel.trim())) {
+    if (!isSamsungMode && identifierType === 'serial' && (!bulkManufacturer.trim() || !bulkModel.trim())) {
       setErrorText('Para serial debes indicar marca y modelo.');
       return;
     }
 
+    if (isSamsungMode && !bulkConfigurationId.trim()) {
+      setErrorText('Para Samsung debes enviar Profile ID.');
+      return;
+    }
+
     const devicesPayload =
-      identifierType === 'imei'
+      isSamsungMode || identifierType === 'imei'
         ? parsedIdentifiers.map((value) => ({ imei: value }))
         : parsedIdentifiers.map((value) => ({
             serialNumber: value,
@@ -440,15 +543,16 @@ function App() {
     setErrorText('');
     setSuccessText('');
     try {
-      const response = await apiRequest<BulkClaimResponse>('/zerotouch/devices/claim/bulk', {
+      const response = await apiRequest<BulkClaimResponse>(pathForBulkClaim(), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
         },
         body: JSON.stringify({
-          customerId: session.zeroTouchCustomerId || session.clientId,
-          identifierType,
-          configurationId: bulkConfigurationId.trim() || undefined,
+          customerId: activeCustomerId || undefined,
+          identifierType: isSamsungMode ? 'imei' : identifierType,
+          profileId: isSamsungMode ? bulkConfigurationId.trim() : undefined,
+          configurationId: isSamsungMode ? undefined : (bulkConfigurationId.trim() || undefined),
           devices: devicesPayload,
         }),
       });
@@ -491,12 +595,16 @@ function App() {
     setIsBusy(true);
     setErrorText('');
     try {
-      await apiRequest('/zerotouch/devices/unclaim', {
+      await apiRequest(pathForUnclaim(), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
         },
-        body: JSON.stringify({ deviceIdentifier }),
+        body: JSON.stringify(
+          isSamsungMode
+            ? { deviceIds: [device.imei || device.serialNumber || device.id] }
+            : { deviceIdentifier }
+        ),
       });
 
       await loadDevices(true);
@@ -508,7 +616,7 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${isSamsungMode ? 'samsung-mode' : ''}`}>
       <header className="topbar">
         <div>
           <p className="kicker">Intechsys Zero-touch</p>
@@ -528,15 +636,15 @@ function App() {
         <section className="panel login-panel">
           <h2>Ingreso por cliente</h2>
           <p>
-            Para este MVP, password se envia automaticamente igual al Client ID.
+            Para este MVP, password se envia automaticamente igual al Client ID. Si es Samsung Knox, el correo es obligatorio.
           </p>
           <form onSubmit={handleLogin} className="form-grid">
             <label>
-              Email (opcional)
+              Correo (obligatorio para Samsung Knox)
               <input
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="operaciones@empresa.com"
+                placeholder="sales@knox.intechsyscol.com"
               />
             </label>
             <label>
@@ -566,7 +674,7 @@ function App() {
             </div>
             <div>
               <p className="label">Customer ID</p>
-              <strong>{session.zeroTouchCustomerId || session.clientId}</strong>
+              <strong>{activeCustomerId || '-'}</strong>
             </div>
             <button
               className="ghost-btn"
@@ -576,6 +684,28 @@ function App() {
             >
               {isBusy ? 'Sincronizando...' : 'Force Sync'}
             </button>
+          </section>
+
+          <section className="panel">
+            <h2>Plataforma de Enrolamiento</h2>
+            <div className="segmented">
+              <button
+                className={enrollmentPlatform === 'zerotouch' ? 'tab-btn active' : 'tab-btn'}
+                type="button"
+                disabled={!session.zeroTouchAvailable}
+                onClick={() => setEnrollmentPlatform('zerotouch')}
+              >
+                Zero-touch
+              </button>
+              <button
+                className={enrollmentPlatform === 'samsung' ? 'tab-btn active' : 'tab-btn'}
+                type="button"
+                disabled={!session.samsungAvailable}
+                onClick={() => setEnrollmentPlatform('samsung')}
+              >
+                Samsung Knox
+              </button>
+            </div>
           </section>
 
           <section className="panel">
@@ -594,6 +724,7 @@ function App() {
                   <button
                     className={identifierType === 'serial' ? 'tab-btn active' : 'tab-btn'}
                     type="button"
+                    disabled={isSamsungMode}
                     onClick={() => setIdentifierType('serial')}
                   >
                     Serial + Marca + Modelo
@@ -665,7 +796,7 @@ function App() {
                   rows={6}
                 />
               </label>
-              {identifierType === 'serial' ? (
+              {!isSamsungMode && identifierType === 'serial' ? (
                 <label>
                   Marca
                   <input
@@ -681,7 +812,7 @@ function App() {
                   </datalist>
                 </label>
               ) : null}
-              {identifierType === 'serial' ? (
+              {!isSamsungMode && identifierType === 'serial' ? (
                 <label>
                   Modelo
                   <input
@@ -698,11 +829,11 @@ function App() {
                 </label>
               ) : null}
               <label>
-                Configuration ID (opcional)
+                {isSamsungMode ? 'Samsung Profile ID (obligatorio)' : 'Configuration ID (opcional)'}
                 <input
                   value={bulkConfigurationId}
                   onChange={(event) => setBulkConfigurationId(event.target.value)}
-                  placeholder="123456789"
+                  placeholder={isSamsungMode ? 'KNOX_PROFILE_001' : '123456789'}
                 />
               </label>
               <button className="primary-btn" type="submit" disabled={!canCreate || isBusy}>
@@ -715,7 +846,64 @@ function App() {
           </section>
 
           <section className="panel">
-            <h2>Dispositivos ({devices.length})</h2>
+            <h2>Dispositivos ({filteredDevices.length}/{devices.length})</h2>
+            <label>
+              Buscar por Identificador, Modelo, Fabricante u Owner
+              <div className="search-input-wrap">
+                <input
+                  value={deviceSearch}
+                  onChange={(event) => setDeviceSearch(event.target.value)}
+                  placeholder="Ej: 50057711500955, Dispositivo, N/A, 1408308716"
+                />
+                {deviceSearch.trim() ? (
+                  <button
+                    type="button"
+                    className="clear-search-btn"
+                    onClick={() => setDeviceSearch('')}
+                    aria-label="Limpiar busqueda"
+                    title="Limpiar busqueda"
+                  >
+                    x
+                  </button>
+                ) : null}
+              </div>
+            </label>
+            <div className="pagination-bar">
+              <label className="pagination-size">
+                Mostrar
+                <select
+                  value={devicePageSize}
+                  onChange={(event) => setDevicePageSize(Number(event.target.value))}
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                </select>
+              </label>
+              <p className="hint">
+                {filteredDevices.length === 0
+                  ? 'Mostrando 0 de 0'
+                  : `Mostrando ${(devicePage - 1) * devicePageSize + 1}-${Math.min(devicePage * devicePageSize, filteredDevices.length)} de ${filteredDevices.length}`}
+              </p>
+              <div className="pagination-actions">
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => setDevicePage((current) => Math.max(1, current - 1))}
+                  disabled={devicePage <= 1}
+                >
+                  Anterior
+                </button>
+                <span className="pagination-page">Pagina {devicePage} de {totalPages}</span>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => setDevicePage((current) => Math.min(totalPages, current + 1))}
+                  disabled={devicePage >= totalPages}
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
             <div className="table-wrap">
               <table>
                 <thead>
@@ -728,12 +916,16 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {devices.length === 0 ? (
+                  {pagedDevices.length === 0 ? (
                     <tr>
-                      <td colSpan={5}>Sin dispositivos.</td>
+                      <td colSpan={5}>
+                        {devices.length === 0
+                          ? 'Sin dispositivos.'
+                          : 'No hay coincidencias para la busqueda.'}
+                      </td>
                     </tr>
                   ) : (
-                    devices.map((device) => (
+                    pagedDevices.map((device) => (
                       <tr key={device.id}>
                         <td>{device.serialOrImei}</td>
                         <td>{device.model}</td>
