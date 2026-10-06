@@ -7,6 +7,11 @@ export const ONE_FRONTEND_URL =
   import.meta.env.VITE_ONE_FRONTEND_URL ||
   'https://jolly-tree-0c459ee10.6.azurestaticapps.net';
 
+export const ONE_API_URL = (
+  import.meta.env.VITE_ONE_API_URL ||
+  'https://intechsys-one-api-b5b5a6cbf9emevev.centralus-01.azurewebsites.net'
+).replace(/\/+$/, '');
+
 export const ONE_APP_SLUG = 'zero-touch';
 
 /**
@@ -17,6 +22,17 @@ export const BACKEND_BASE_URL =
   import.meta.env.VITE_BACKEND_BASE_URL ||
   'https://intechsys-backend-prod-w2.lemondesert-86c4a20f.westus2.azurecontainerapps.io';
 const SSO_STORAGE_KEY = 'zerotouch.sso.pkce';
+
+/**
+ * Llama al reenvío del API de zero-touch y, si ese API todavía no lo tiene (versión anterior
+ * desplegada: 404), va directo a One. Lo directo exige que el dominio de la consola esté en el
+ * CORS de One. Se puede quitar cuando el API con /api/v1/sso esté en todos los ambientes.
+ */
+async function postSso(rutaApi: string, rutaOne: string, init: RequestInit): Promise<Response> {
+  const viaApi = await fetch(`${BACKEND_BASE_URL}${rutaApi}`, { ...init, method: 'POST' });
+  if (viaApi.status !== 404) return viaApi;
+  return fetch(`${ONE_API_URL}${rutaOne}`, { ...init, method: 'POST' });
+}
 
 function randomBase64(length: number): string {
   const bytes = crypto.getRandomValues(new Uint8Array(length));
@@ -119,8 +135,7 @@ export async function procesarCallbackSSO(): Promise<SsoTokenResult> {
     throw new Error('El inicio de sesión con One no se pudo completar o el estado de seguridad no coincide.');
   }
 
-  const response = await fetch(`${BACKEND_BASE_URL}/api/v1/sso/token`, {
-    method: 'POST',
+  const response = await postSso('/api/v1/sso/token', '/api/v1/sso/token', {
     headers: {
       'Content-Type': 'application/json',
     },
@@ -155,8 +170,7 @@ export async function cerrarSesionOne(accessToken: string, refreshToken?: string
   if (!refreshToken) return;
 
   try {
-    await fetch(`${BACKEND_BASE_URL}/api/v1/sso/logout`, {
-      method: 'POST',
+    await postSso('/api/v1/sso/logout', '/api/v1/auth/logout', {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
       body: JSON.stringify({ refreshToken }),
       // Que salga aunque la página se recargue enseguida.

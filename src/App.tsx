@@ -359,8 +359,12 @@ function App() {
       throw new Error('Su usuario no tiene empresas con Zero-touch en Intechsys One.');
     }
 
-    const zeroTouchAvailable = Boolean(active.zeroTouchAvailable);
+    // Un API anterior no trae las plataformas: entonces Zero-touch queda habilitado y el API
+    // resuelve el customer, como hacía la consola antes.
+    const zeroTouchAvailable = active.zeroTouchAvailable ?? true;
     const samsungAvailable = Boolean(active.samsungAvailable);
+    const zeroTouchCustomerId =
+      active.zeroTouchCustomerId || active.zeroTouchCustomerName?.split('/').pop() || undefined;
 
     const newSession: AuthSession = {
       accessToken: token,
@@ -378,7 +382,7 @@ function App() {
       })),
       zeroTouchAvailable,
       samsungAvailable,
-      zeroTouchCustomerId: active.zeroTouchCustomerId || undefined,
+      zeroTouchCustomerId,
       samsungCustomerId: active.samsungCustomerId || undefined,
       preferredEnrollment: zeroTouchAvailable || !samsungAvailable ? 'zerotouch' : 'samsung',
     };
