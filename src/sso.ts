@@ -7,11 +7,15 @@ export const ONE_FRONTEND_URL =
   import.meta.env.VITE_ONE_FRONTEND_URL ||
   'https://jolly-tree-0c459ee10.6.azurestaticapps.net';
 
-export const ONE_API_URL =
-  import.meta.env.VITE_ONE_API_URL ||
-  'https://intechsys-one-api-b5b5a6cbf9emevev.centralus-01.azurewebsites.net';
-
 export const ONE_APP_SLUG = 'zero-touch';
+
+/**
+ * API de zero-touch. El canje del código y el cierre de sesión pasan por él (que los reenvía a
+ * One): así la consola no necesita estar en la lista de orígenes (CORS) de One.
+ */
+export const BACKEND_BASE_URL =
+  import.meta.env.VITE_BACKEND_BASE_URL ||
+  'https://intechsys-backend-prod-w2.lemondesert-86c4a20f.westus2.azurecontainerapps.io';
 const SSO_STORAGE_KEY = 'zerotouch.sso.pkce';
 
 function randomBase64(length: number): string {
@@ -39,8 +43,16 @@ export function getRedirectUri(): string {
 
 /**
  * Inicia el flujo de autenticación PKCE redirigiendo a la pantalla de autorización de One.
+ *
+ * clientIdCliente es el Client ID que escribe el cliente: va a One como tenant_hint y One abre la
+ * consola con la empresa que lo tiene como variable de la app (Partner ID de Reseller). Quién
+ * entra lo decide One con su login; el Client ID solo dice a qué empresa.
  */
-export async function iniciarSSO(tenantId?: string | null, selectAccount = false): Promise<void> {
+export async function iniciarSSO(
+  tenantId?: string | null,
+  selectAccount = false,
+  clientIdCliente?: string | null,
+): Promise<void> {
   const pkce = {
     verificador: randomBase64(32),
     estado: randomBase64(16),
@@ -60,6 +72,8 @@ export async function iniciarSSO(tenantId?: string | null, selectAccount = false
 
   if (tenantId) {
     authUrl.searchParams.set('tenant', tenantId);
+  } else if (clientIdCliente?.trim()) {
+    authUrl.searchParams.set('tenant_hint', clientIdCliente.trim());
   }
 
   if (selectAccount) {
@@ -105,7 +119,7 @@ export async function procesarCallbackSSO(): Promise<SsoTokenResult> {
     throw new Error('El inicio de sesión con One no se pudo completar o el estado de seguridad no coincide.');
   }
 
-  const response = await fetch(`${ONE_API_URL.replace(/\/+$/, '')}/api/v1/sso/token`, {
+  const response = await fetch(`${BACKEND_BASE_URL}/api/v1/sso/token`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -131,4 +145,24 @@ export async function procesarCallbackSSO(): Promise<SsoTokenResult> {
     tenantId: tokenData.tenantId || tenant || savedPkce.tenantId || null,
     user: tokenData.user,
   };
+}
+
+/**
+ * Cierra en One la sesión de esta consola (solo la suya: el portal y las demás apps siguen
+ * abiertas). Sin esto el refresh token seguiría vivo hasta vencer.
+ */
+export async function cerrarSesionOne(accessToken: string, refreshToken?: string): Promise<void> {
+  if (!refreshToken) return;
+
+  try {
+    await fetch(`${BACKEND_BASE_URL}/api/v1/sso/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ refreshToken }),
+      // Que salga aunque la página se recargue enseguida.
+      keepalive: true,
+    });
+  } catch {
+    // Sin red: el token vence solo.
+  }
 }

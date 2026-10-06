@@ -1,6 +1,6 @@
 # Zero-touch Web Console
 
-Web application for client login (`clientId`), device inventory, bulk claim (Zero-touch & Samsung Knox), and unclaim management via the Zero-touch API.
+Web application for client login (Client ID through Intechsys One), device inventory, bulk claim (Zero-touch & Samsung Knox), and unclaim management via the Zero-touch API.
 
 ## Tech Stack
 
@@ -59,11 +59,20 @@ Deployment is automated via GitHub Actions:
 Configure the following secrets in **Settings > Secrets and variables > Actions**:
 
 - `AZURE_STATIC_WEB_APPS_API_TOKEN`: Deployment token from Azure Static Web Apps.
+- `VITE_ONE_FRONTEND_URL` (optional): One portal, where users sign in. Defaults to production.
 - `VITE_BACKEND_BASE_URL`: URL of the deployed backend API (e.g. `https://intechsys-backend-prod-w2.lemondesert-86c4a20f.westus2.azurecontainerapps.io`).
+
+## Sign-in
+
+The user types their **Client ID**; the console sends them to Intechsys One (`/autorizar` with
+`tenant_hint=<Client ID>`). One authenticates them and opens the console with the company that has
+that Client ID as its zero-touch variable. Register `https://<console>/sso/callback` as a redirect
+URI of the `zero-touch` app in One, and `https://<console>/sso` as its launch URL.
 
 ## Backend API Endpoints Used
 
-- `POST /auth/login`: Client authentication
+- `POST /api/v1/sso/token`, `POST /api/v1/sso/logout`: One code exchange and logout (forwarded by the API)
+- `GET /api/v1/sesion`: user, companies and active company with its Client ID and platforms
 - `GET /zerotouch/devices`: List Android Zero-touch devices
 - `POST /zerotouch/devices/claim/bulk`: Bulk claim Zero-touch devices
 - `POST /zerotouch/devices/unclaim`: Unclaim Zero-touch device

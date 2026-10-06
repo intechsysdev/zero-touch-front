@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import BarcodeScannerComponent from 'react-qr-barcode-scanner';
-import { iniciarSSO, procesarCallbackSSO } from './sso';
+import { BACKEND_BASE_URL, cerrarSesionOne, iniciarSSO, procesarCallbackSSO } from './sso';
 
 type AuthSession = {
   accessToken: string;
+  refreshToken?: string;
   companyName: string;
   clientId: string;
   oneTenantId?: string;
@@ -66,9 +67,6 @@ type BulkClaimResponse = {
   };
 };
 
-const BACKEND_BASE_URL =
-  import.meta.env.VITE_BACKEND_BASE_URL ||
-  'https://intechsys-backend-prod-w2.lemondesert-86c4a20f.westus2.azurecontainerapps.io';
 const SESSION_KEY = 'zt-web-session-v1';
 
 function getErrorMessage(error: unknown): string {
@@ -252,7 +250,6 @@ function App() {
   const [devicePage, setDevicePage] = useState(1);
   const [enrollmentPlatform, setEnrollmentPlatform] = useState<'zerotouch' | 'samsung'>('zerotouch');
 
-  const [email, setEmail] = useState('');
   const [clientId, setClientId] = useState('');
 
   const [successText, setSuccessText] = useState('');
@@ -317,7 +314,11 @@ function App() {
     return filteredDevices.slice(start, start + devicePageSize);
   }, [filteredDevices, devicePage, devicePageSize]);
 
-  async function cargarSesion(token: string, tenantId?: string | null): Promise<AuthSession> {
+  async function cargarSesion(
+    token: string,
+    tenantId?: string | null,
+    refreshToken?: string,
+  ): Promise<AuthSession> {
     const reqHeaders: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (tenantId) reqHeaders['X-Tenant-Id'] = tenantId;
 
@@ -341,20 +342,32 @@ function App() {
         oneSlug?: string;
         slug?: string;
         zeroTouchCustomerName?: string;
+        zeroTouchAvailable?: boolean;
+        zeroTouchCustomerId?: string | null;
+        samsungAvailable?: boolean;
+        samsungCustomerId?: string | null;
       } | null;
     }>('/api/v1/sesion', { headers: reqHeaders });
 
-    const active = data.tenantActivo || data.empresas?.[0];
-    const companyName = active?.companyName || active?.nombre || 'Intechsys';
-    const clientId = active?.clientId || active?.slug || 'cliente-one';
-    const zeroTouchCustomerName = active?.zeroTouchCustomerName || '';
-    const zeroTouchCustomerId = zeroTouchCustomerName.split('/').pop() || '';
+    // Sin empresa activa (usuario con varias que no eligió) se abre la primera: el API resuelve
+    // sus plataformas en cuanto llega con X-Tenant-Id.
+    const active = data.tenantActivo;
+    if (!active && data.empresas?.[0]?.oneTenantId && data.empresas[0].oneTenantId !== tenantId) {
+      return cargarSesion(token, data.empresas[0].oneTenantId, refreshToken);
+    }
+    if (!active) {
+      throw new Error('Su usuario no tiene empresas con Zero-touch en Intechsys One.');
+    }
+
+    const zeroTouchAvailable = Boolean(active.zeroTouchAvailable);
+    const samsungAvailable = Boolean(active.samsungAvailable);
 
     const newSession: AuthSession = {
       accessToken: token,
-      companyName,
-      clientId,
-      oneTenantId: active?.oneTenantId || tenantId || undefined,
+      refreshToken,
+      companyName: active.companyName || active.nombre || 'Intechsys',
+      clientId: active.clientId || '',
+      oneTenantId: active.oneTenantId || tenantId || undefined,
       availableTenants: (data.empresas || []).map((e) => ({
         id: e.id || undefined,
         clientId: e.clientId || e.slug || 'cliente',
@@ -363,11 +376,14 @@ function App() {
         oneTenantId: e.oneTenantId || '',
         zeroTouchCustomerName: e.zeroTouchCustomerName,
       })),
-      zeroTouchAvailable: true,
-      zeroTouchCustomerId: zeroTouchCustomerId || undefined,
-      preferredEnrollment: 'zerotouch',
+      zeroTouchAvailable,
+      samsungAvailable,
+      zeroTouchCustomerId: active.zeroTouchCustomerId || undefined,
+      samsungCustomerId: active.samsungCustomerId || undefined,
+      preferredEnrollment: zeroTouchAvailable || !samsungAvailable ? 'zerotouch' : 'samsung',
     };
 
+    setEnrollmentPlatform(newSession.preferredEnrollment ?? 'zerotouch');
     setSession(newSession);
     localStorage.setItem(SESSION_KEY, JSON.stringify(newSession));
     return newSession;
@@ -390,7 +406,7 @@ function App() {
       setIsBusy(true);
       procesarCallbackSSO()
         .then((ssoResult) => {
-          return cargarSesion(ssoResult.accessToken, ssoResult.tenantId);
+          return cargarSesion(ssoResult.accessToken, ssoResult.tenantId, ssoResult.refreshToken);
         })
         .then(() => {
           window.history.replaceState({}, document.title, '/');
@@ -539,7 +555,7 @@ function App() {
     }
   }
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const normalizedClientId = clientId.trim();
@@ -548,28 +564,15 @@ function App() {
       return;
     }
 
+    // One autentica al usuario y abre la consola con la empresa que tiene este Client ID.
+    // select_account: quien llega al login puede querer entrar con otra cuenta que la abierta en One.
     setIsBusy(true);
     setErrorText('');
-    try {
-      const data = await apiRequest<AuthSession>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({
-          email: email.trim(),
-          clientId: normalizedClientId,
-          password: normalizedClientId,
-        }),
-      });
-
-      setSession(data);
-      localStorage.setItem(SESSION_KEY, JSON.stringify(data));
-    } catch (error) {
-      setErrorText(getErrorMessage(error));
-    } finally {
-      setIsBusy(false);
-    }
+    void iniciarSSO(null, true, normalizedClientId);
   }
 
   function handleLogout() {
+    if (session) void cerrarSesionOne(session.accessToken, session.refreshToken);
     setSession(null);
     setDevices([]);
     setDeviceSearch('');
@@ -580,7 +583,6 @@ function App() {
     setDevicePage(1);
     setDevicePageSize(10);
     setEnrollmentPlatform('zerotouch');
-    setEmail('');
     localStorage.removeItem(SESSION_KEY);
   }
 
@@ -765,56 +767,41 @@ function App() {
 
       {!session ? (
         <section className="panel login-panel">
-          <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
-            <button
-              type="button"
-              className="primary-btn"
-              style={{
-                width: '100%',
-                backgroundColor: '#0284c7',
-                padding: '0.85rem',
-                fontSize: '1rem',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-              }}
-              onClick={() => void iniciarSSO()}
-            >
-              Iniciar sesión con Intechsys One
-            </button>
-            <p style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: '#64748b' }}>
-              — o usar credenciales locales de cliente —
-            </p>
-          </div>
-
           <h2>Ingreso por cliente</h2>
           <p>
-            Para este MVP, password se envia automaticamente igual al Client ID. Si es Samsung Knox, el correo es obligatorio.
+            Escriba su Client ID. Lo llevaremos a Intechsys One para que inicie sesión con su usuario,
+            y volverá aquí con su empresa abierta.
           </p>
           <form onSubmit={handleLogin} className="form-grid">
-            <label>
-              Correo (obligatorio para Samsung Knox)
-              <input
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="sales@knox.intechsyscol.com"
-              />
-            </label>
             <label>
               Client ID
               <input
                 value={clientId}
                 onChange={(event) => setClientId(event.target.value)}
                 placeholder="1295751765"
+                inputMode="numeric"
+                autoComplete="off"
                 required
               />
             </label>
             <button className="primary-btn" type="submit" disabled={isBusy}>
-              {isBusy ? 'Conectando...' : 'Ingresar'}
+              {isBusy ? 'Abriendo Intechsys One...' : 'Continuar con Intechsys One'}
             </button>
           </form>
+          <p className="hint" style={{ marginTop: '1rem', textAlign: 'center' }}>
+            ¿Entra a varias empresas?{' '}
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => {
+                setIsBusy(true);
+                void iniciarSSO(null, true);
+              }}
+              disabled={isBusy}
+            >
+              Entrar con su cuenta de One y elegir la empresa
+            </button>
+          </p>
         </section>
       ) : (
         <>
@@ -836,7 +823,7 @@ function App() {
                       (t) => t.oneTenantId === e.target.value
                     );
                     if (selected) {
-                      void cargarSesion(session.accessToken, selected.oneTenantId);
+                      void cargarSesion(session.accessToken, selected.oneTenantId, session.refreshToken);
                     }
                   }}
                 >
