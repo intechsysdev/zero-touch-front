@@ -1,11 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import BarcodeScannerComponent from 'react-qr-barcode-scanner';
+import { iniciarSSO, procesarCallbackSSO } from './sso';
 
 type AuthSession = {
   accessToken: string;
   companyName: string;
   clientId: string;
+  oneTenantId?: string;
+  availableTenants?: Array<{
+    id?: number;
+    clientId: string;
+    nombre: string;
+    slug: string;
+    oneTenantId: string;
+    zeroTouchCustomerName?: string;
+  }>;
   zeroTouchAvailable?: boolean;
   samsungAvailable?: boolean;
   zeroTouchCustomerId?: string;
@@ -72,13 +82,28 @@ function getErrorMessage(error: unknown): string {
 
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const { headers, ...requestOptions } = options;
-  const customHeaders = headers || {};
+  const customHeaders = (headers || {}) as Record<string, string>;
+
+  let sessionTenantId: string | null = null;
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      sessionTenantId = parsed?.oneTenantId || null;
+    }
+  } catch {}
+
+  const finalHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...customHeaders,
+  };
+
+  if (sessionTenantId && !finalHeaders['X-Tenant-Id']) {
+    finalHeaders['X-Tenant-Id'] = sessionTenantId;
+  }
 
   const response = await fetch(`${BACKEND_BASE_URL}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...customHeaders,
-    },
+    headers: finalHeaders,
     ...requestOptions,
   });
 
@@ -292,7 +317,113 @@ function App() {
     return filteredDevices.slice(start, start + devicePageSize);
   }, [filteredDevices, devicePage, devicePageSize]);
 
+  async function cargarSesion(token: string, tenantId?: string | null): Promise<AuthSession> {
+    const reqHeaders: Record<string, string> = { Authorization: `Bearer ${token}` };
+    if (tenantId) reqHeaders['X-Tenant-Id'] = tenantId;
+
+    const data = await apiRequest<{
+      usuario: { id: string; email: string; nombre: string; esPlatformAdmin?: boolean };
+      empresas: Array<{
+        id?: number | null;
+        clientId?: string;
+        nombre?: string;
+        companyName?: string;
+        slug?: string;
+        oneTenantId?: string;
+        zeroTouchCustomerName?: string;
+      }>;
+      tenantActivo: {
+        id?: number | null;
+        clientId?: string;
+        companyName?: string;
+        nombre?: string;
+        oneTenantId?: string;
+        oneSlug?: string;
+        slug?: string;
+        zeroTouchCustomerName?: string;
+      } | null;
+    }>('/api/v1/sesion', { headers: reqHeaders });
+
+    const active = data.tenantActivo || data.empresas?.[0];
+    const companyName = active?.companyName || active?.nombre || 'Intechsys';
+    const clientId = active?.clientId || active?.slug || 'cliente-one';
+    const zeroTouchCustomerName = active?.zeroTouchCustomerName || '';
+    const zeroTouchCustomerId = zeroTouchCustomerName.split('/').pop() || '';
+
+    const newSession: AuthSession = {
+      accessToken: token,
+      companyName,
+      clientId,
+      oneTenantId: active?.oneTenantId || tenantId || undefined,
+      availableTenants: (data.empresas || []).map((e) => ({
+        id: e.id || undefined,
+        clientId: e.clientId || e.slug || 'cliente',
+        nombre: e.nombre || 'Empresa',
+        slug: e.slug || '',
+        oneTenantId: e.oneTenantId || '',
+        zeroTouchCustomerName: e.zeroTouchCustomerName,
+      })),
+      zeroTouchAvailable: true,
+      zeroTouchCustomerId: zeroTouchCustomerId || undefined,
+      preferredEnrollment: 'zerotouch',
+    };
+
+    setSession(newSession);
+    localStorage.setItem(SESSION_KEY, JSON.stringify(newSession));
+    return newSession;
+  }
+
   useEffect(() => {
+    const pathname = window.location.pathname.replace(/\/+$/, '');
+    const urlParams = new URLSearchParams(window.location.search);
+
+    // Flujo 1: One inicia el flujo en /sso (botón en catálogo de One)
+    if (pathname === '/sso') {
+      const tenantParam = urlParams.get('tenant') || urlParams.get('tenantId');
+      setIsBusy(true);
+      void iniciarSSO(tenantParam);
+      return;
+    }
+
+    // Flujo 2: One regresa con el código en /sso/callback
+    if (pathname === '/sso/callback') {
+      setIsBusy(true);
+      procesarCallbackSSO()
+        .then((ssoResult) => {
+          return cargarSesion(ssoResult.accessToken, ssoResult.tenantId);
+        })
+        .then(() => {
+          window.history.replaceState({}, document.title, '/');
+        })
+        .catch((err) => {
+          console.error('Error procesando callback SSO de One:', err);
+          setErrorText(getErrorMessage(err));
+        })
+        .finally(() => {
+          setIsBusy(false);
+        });
+      return;
+    }
+
+    // Flujo 3: Token directo en URL (?token=...&tenantId=...)
+    const ssoToken = urlParams.get('token') || urlParams.get('accessToken');
+    const ssoTenantId = urlParams.get('tenantId') || urlParams.get('tenant');
+    if (ssoToken) {
+      setIsBusy(true);
+      cargarSesion(ssoToken, ssoTenantId)
+        .then(() => {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        })
+        .catch((err) => {
+          setErrorText(getErrorMessage(err));
+        })
+        .finally(() => {
+          setIsBusy(false);
+        });
+      return;
+    }
+
+    // Flujo 4: Sesión existente en localStorage
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) {
       return;
@@ -634,6 +765,30 @@ function App() {
 
       {!session ? (
         <section className="panel login-panel">
+          <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
+            <button
+              type="button"
+              className="primary-btn"
+              style={{
+                width: '100%',
+                backgroundColor: '#0284c7',
+                padding: '0.85rem',
+                fontSize: '1rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+              }}
+              onClick={() => void iniciarSSO()}
+            >
+              Iniciar sesión con Intechsys One
+            </button>
+            <p style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: '#64748b' }}>
+              — o usar credenciales locales de cliente —
+            </p>
+          </div>
+
           <h2>Ingreso por cliente</h2>
           <p>
             Para este MVP, password se envia automaticamente igual al Client ID. Si es Samsung Knox, el correo es obligatorio.
@@ -664,10 +819,40 @@ function App() {
       ) : (
         <>
           <section className="panel info-panel">
-            <div>
-              <p className="label">Empresa</p>
-              <strong>{session.companyName}</strong>
-            </div>
+            {session.availableTenants && session.availableTenants.length > 1 ? (
+              <div>
+                <p className="label">Empresa Activa</p>
+                <select
+                  value={session.oneTenantId || ''}
+                  style={{
+                    padding: '0.4rem 0.6rem',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#fff',
+                    fontWeight: 600,
+                  }}
+                  onChange={(e) => {
+                    const selected = session.availableTenants?.find(
+                      (t) => t.oneTenantId === e.target.value
+                    );
+                    if (selected) {
+                      void cargarSesion(session.accessToken, selected.oneTenantId);
+                    }
+                  }}
+                >
+                  {session.availableTenants.map((t) => (
+                    <option key={t.oneTenantId} value={t.oneTenantId}>
+                      {t.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <p className="label">Empresa</p>
+                <strong>{session.companyName}</strong>
+              </div>
+            )}
             <div>
               <p className="label">Client ID</p>
               <strong>{session.clientId}</strong>
