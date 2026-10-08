@@ -818,7 +818,7 @@ function App() {
                   style={{
                     padding: '0.4rem 0.6rem',
                     borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
+                    border: '1px solid var(--line)',
                     background: '#fff',
                     fontWeight: 600,
                   }}

@@ -1,16 +1,25 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
 :root {
-  --ink: #122023;
-  --muted: #4d6268;
-  --paper: #f3f6ee;
-  --card: #fcfff8;
-  --line: #d3dfd7;
-  --accent: #2f8f83;
-  --accent-strong: #0d655b;
-  --danger: #b53a3a;
-  --danger-strong: #8f2727;
-  --shadow: 0 16px 42px rgba(11, 45, 39, 0.12);
+  /* Marca Intechsys: carmesí para la acción, carbón para el texto, ámbar para lo que pide
+     atención. Eliminar va en el carmesí profundo, más oscuro que el botón principal. */
+  --brand-deep: #751326;
+  --brand-vivid: #e51e4a;
+  --brand-amber: #da830b;
+  --brand-band: linear-gradient(90deg, var(--brand-deep), var(--brand-vivid) 50%, var(--brand-deep));
+
+  --ink: #1f1f1d;
+  --muted: #5a5958;
+  --paper: #f6f5f3;
+  --card: #ffffff;
+  --line: #e4e2de;
+  --accent: #af1839;
+  --accent-strong: #751326;
+  --accent-soft: #fbebee;
+  --focus: rgba(229, 30, 74, 0.3);
+  --danger: #751326;
+  --danger-strong: #4e0c19;
+  --shadow: 0 16px 42px rgba(31, 31, 29, 0.1);
 }
 
 * {
@@ -23,13 +32,23 @@ body {
   font-family: 'Space Grotesk', sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(circle at 15% 12%, #d8eee0 0, transparent 35%),
-    radial-gradient(circle at 82% 10%, #d8ebe8 0, transparent 40%),
-    linear-gradient(180deg, #f8fcf9 0, var(--paper) 100%);
+    radial-gradient(circle at 15% 12%, #fbe6ea 0, transparent 35%),
+    radial-gradient(circle at 82% 10%, #fdf0d6 0, transparent 40%),
+    linear-gradient(180deg, #faf9f8 0, var(--paper) 100%);
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* La franja de la guía de marca, arriba de todo. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: 4px;
+  z-index: 50;
+  background: var(--brand-band);
 }
 
 h1,
@@ -45,15 +64,19 @@ p {
 }
 
 .app-shell.samsung-mode {
-  --accent: #0f53c0;
-  --accent-strong: #0a2f7c;
-  --card: #f7f9ff;
-  --line: #cdd8f6;
-  --shadow: 0 18px 42px rgba(10, 47, 124, 0.15);
+  /* Samsung Knox: la otra familia de la marca, carbón con ámbar. Así se nota de un vistazo en
+     qué plataforma se están cargando equipos. */
+  --accent: #3c3c3b;
+  --accent-strong: #1f1f1d;
+  --accent-soft: #efeeec;
+  --focus: rgba(218, 131, 11, 0.35);
+  --card: #fcfbf9;
+  --line: #dddad5;
+  --shadow: 0 18px 42px rgba(31, 31, 29, 0.14);
 }
 
 .app-shell.samsung-mode .kicker {
-  color: #0a2f7c;
+  color: #a35f07;
 }
 
 .topbar {
@@ -134,7 +157,7 @@ input {
 }
 
 input:focus {
-  outline: 2px solid rgba(47, 143, 131, 0.25);
+  outline: 2px solid var(--focus);
   border-color: var(--accent);
 }
 
@@ -158,12 +181,18 @@ button {
 
 .primary-btn {
   background: linear-gradient(135deg, var(--accent) 0, var(--accent-strong) 100%);
-  color: #f7fffd;
+  color: #ffffff;
 }
 
+/* Secundarios en neutro: el carmesí queda para la acción principal y para el hover. */
 .ghost-btn {
-  background: #e8f1ec;
-  color: #153339;
+  background: #efeeec;
+  color: var(--ink);
+}
+
+.ghost-btn:not(:disabled):hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 /* Acción secundaria dentro de un texto. */
@@ -191,9 +220,9 @@ button:disabled {
 }
 
 .error-banner {
-  background: #ffe8e8;
-  border: 1px solid #efb3b3;
-  color: #6d1f1f;
+  background: #f9e8eb;
+  border: 1px solid #edb6c2;
+  color: #751326;
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 14px;
@@ -205,9 +234,9 @@ button:disabled {
 }
 
 .success-banner {
-  background: #e4f8eb;
-  border: 1px solid #9ccfad;
-  color: #184b29;
+  background: #e6f4ee;
+  border: 1px solid #a8d5bf;
+  color: #0f5a3c;
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 14px;
@@ -225,7 +254,7 @@ textarea {
 }
 
 textarea:focus {
-  outline: 2px solid rgba(47, 143, 131, 0.25);
+  outline: 2px solid var(--focus);
   border-color: var(--accent);
 }
 
@@ -253,24 +282,24 @@ textarea:focus {
   gap: 6px;
   padding: 4px;
   border-radius: 12px;
-  background: #e8f1ec;
+  background: #efeeec;
 }
 
 .tab-btn {
   background: transparent;
-  color: #23464d;
+  color: var(--ink);
 }
 
 .tab-btn.active {
   background: linear-gradient(135deg, var(--accent) 0, var(--accent-strong) 100%);
-  color: #f7fffd;
+  color: #ffffff;
 }
 
 .qr-box {
   border: 1px dashed var(--line);
   border-radius: 12px;
   padding: 12px;
-  background: #f8fcf9;
+  background: #faf9f8;
 }
 
 .table-wrap {
@@ -289,7 +318,7 @@ textarea:focus {
   height: 34px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: #eef5f1;
+  background: #f1f0ee;
   color: var(--muted);
   padding: 0;
   font-size: 1rem;
