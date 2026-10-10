@@ -5,11 +5,11 @@
 
 export const ONE_FRONTEND_URL =
   import.meta.env.VITE_ONE_FRONTEND_URL ||
-  'https://jolly-tree-0c459ee10.6.azurestaticapps.net';
+  'https://jolly-pond-0e51aed10.3.azurestaticapps.net';
 
 export const ONE_API_URL = (
   import.meta.env.VITE_ONE_API_URL ||
-  'https://intechsys-one-api-b5b5a6cbf9emevev.centralus-01.azurewebsites.net'
+  'https://app-intechsysone-api-prd-bxehhkf8dgcwbve9.centralus-01.azurewebsites.net'
 ).replace(/\/+$/, '');
 
 export const ONE_APP_SLUG = 'zero-touch';
@@ -20,7 +20,7 @@ export const ONE_APP_SLUG = 'zero-touch';
  */
 export const BACKEND_BASE_URL =
   import.meta.env.VITE_BACKEND_BASE_URL ||
-  'https://intechsys-backend-prod-w2.lemondesert-86c4a20f.westus2.azurecontainerapps.io';
+  'https://app-zerotouch-api-prd-a4cgg3amfecgbear.centralus-01.azurewebsites.net';
 const SSO_STORAGE_KEY = 'zerotouch.sso.pkce';
 
 /**

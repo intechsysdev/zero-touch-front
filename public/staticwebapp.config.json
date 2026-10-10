@@ -4,7 +4,7 @@
     "exclude": ["/assets/*", "/*.css", "/*.js", "/*.png", "/*.jpg", "/*.svg", "/*.ico"]
   },
   "globalHeaders": {
-    "Content-Security-Policy": "frame-ancestors 'self' https://jolly-tree-0c459ee10.6.azurestaticapps.net http://localhost:5173",
+    "Content-Security-Policy": "frame-ancestors 'self' https://jolly-pond-0e51aed10.3.azurestaticapps.net https://jolly-tree-0c459ee10.6.azurestaticapps.net http://localhost:5173",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin"
   }

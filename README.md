@@ -60,7 +60,7 @@ Configure the following secrets in **Settings > Secrets and variables > Actions*
 
 - `AZURE_STATIC_WEB_APPS_API_TOKEN`: Deployment token from Azure Static Web Apps.
 - `VITE_ONE_FRONTEND_URL` (optional): One portal, where users sign in. Defaults to production.
-- `VITE_BACKEND_BASE_URL`: URL of the deployed backend API (e.g. `https://intechsys-backend-prod-w2.lemondesert-86c4a20f.westus2.azurecontainerapps.io`).
+- `VITE_BACKEND_BASE_URL`: URL of the deployed backend API (e.g. `https://app-zerotouch-api-prd-a4cgg3amfecgbear.centralus-01.azurewebsites.net`).
 
 ## Sign-in
 
