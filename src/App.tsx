@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import BarcodeScannerComponent from 'react-qr-barcode-scanner';
-import { BACKEND_BASE_URL, cerrarSesionOne, iniciarSSO, procesarCallbackSSO } from './sso';
+import { acabaDeSalir, BACKEND_BASE_URL, cerrarSesionOne, iniciarSSO, marcarSalida, procesarCallbackSSO } from './sso';
 
 type AuthSession = {
   accessToken: string;
@@ -568,14 +568,15 @@ function App() {
       return;
     }
 
-    // One autentica al usuario y abre la consola con la empresa que tiene este Client ID.
-    // select_account: quien llega al login puede querer entrar con otra cuenta que la abierta en One.
+    // One autentica al usuario y abre la consola con la empresa que tiene este Client ID. Con
+    // sesión abierta en One entra directo; solo tras salir de la consola pregunta con qué cuenta.
     setIsBusy(true);
     setErrorText('');
-    void iniciarSSO(null, true, normalizedClientId);
+    void iniciarSSO(null, acabaDeSalir(), normalizedClientId);
   }
 
   function handleLogout() {
+    marcarSalida();
     if (session) void cerrarSesionOne(session.accessToken, session.refreshToken);
     setSession(null);
     setDevices([]);
@@ -799,7 +800,7 @@ function App() {
               className="link-btn"
               onClick={() => {
                 setIsBusy(true);
-                void iniciarSSO(null, true);
+                void iniciarSSO(null, acabaDeSalir());
               }}
               disabled={isBusy}
             >

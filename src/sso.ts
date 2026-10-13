@@ -24,6 +24,15 @@ export const BACKEND_BASE_URL =
 const SSO_STORAGE_KEY = 'zerotouch.sso.pkce';
 
 /**
+ * Salir de la consola no cierra la sesión del portal de One. Tras salir, One pregunta con qué
+ * cuenta seguir; el resto de las veces entra directo con la sesión abierta, que es lo que hace
+ * que una sola sesión de One sirva para todas las apps. Vive en sessionStorage.
+ */
+const SALIDA_STORAGE_KEY = 'zerotouch.sso.salio';
+export const marcarSalida = () => sessionStorage.setItem(SALIDA_STORAGE_KEY, '1');
+export const acabaDeSalir = () => sessionStorage.getItem(SALIDA_STORAGE_KEY) === '1';
+
+/**
  * Llama al reenvío del API de zero-touch y, si ese API todavía no lo tiene (versión anterior
  * desplegada: 404), va directo a One. Lo directo exige que el dominio de la consola esté en el
  * CORS de One. Se puede quitar cuando el API con /api/v1/sso esté en todos los ambientes.
@@ -153,6 +162,7 @@ export async function procesarCallbackSSO(): Promise<SsoTokenResult> {
   }
 
   const tokenData = await response.json();
+  sessionStorage.removeItem(SALIDA_STORAGE_KEY);
 
   return {
     accessToken: tokenData.accessToken,
