@@ -5,7 +5,7 @@
 
 export const ONE_FRONTEND_URL =
   import.meta.env.VITE_ONE_FRONTEND_URL ||
-  'https://jolly-pond-0e51aed10.3.azurestaticapps.net';
+  'https://intechsysone.com';
 
 export const ONE_API_URL = (
   import.meta.env.VITE_ONE_API_URL ||
