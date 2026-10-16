@@ -337,6 +337,7 @@ function App() {
   const [devicePage, setDevicePage] = useState(1);
   const [dateSortOrder, setDateSortOrder] = useState<'desc' | 'asc' | 'none'>('desc');
   const [enrollmentPlatform, setEnrollmentPlatform] = useState<'zerotouch' | 'samsung'>('zerotouch');
+  const isSamsungMode = enrollmentPlatform === 'samsung';
 
   const [clientId, setClientId] = useState('');
 
@@ -599,8 +600,6 @@ function App() {
     enrollmentPlatform === 'samsung'
       ? session?.samsungCustomerId || session?.clientId
       : session?.zeroTouchCustomerId;
-
-  const isSamsungMode = enrollmentPlatform === 'samsung';
 
   function pathForDevices() {
     return isSamsungMode ? '/samsung/devices' : '/zerotouch/devices';
