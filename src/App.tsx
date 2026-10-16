@@ -39,6 +39,11 @@ type RawDevice = {
   serialNumber?: string;
   deviceIdentifier?: DeviceIdentifier;
   claims?: Array<{ ownerCompanyId?: string; createTime?: string }>;
+  createTime?: string;
+  createdAt?: string;
+  uploadDate?: string;
+  createdDate?: string;
+  registeredDate?: string;
 };
 
 type ManagedDevice = {
@@ -49,7 +54,6 @@ type ManagedDevice = {
   imei?: string;
   serialNumber?: string;
   createdAt?: string;
-  ownerCompanyId?: string;
 };
 
 type IdentifierType = 'imei' | 'serial';
@@ -59,12 +63,30 @@ type IdentifierOptionsResponse = {
   modelsByManufacturer?: Record<string, string[]>;
 };
 
+type BulkClaimItemDetail = {
+  imei?: string;
+  serialNumber?: string;
+  identifier?: string;
+  deviceId?: string;
+  error?: string;
+  errorCode?: string;
+  message?: string;
+  reason?: string;
+  status?: string;
+  deviceIdentifier?: DeviceIdentifier;
+};
+
 type BulkClaimResponse = {
   summary?: {
     total?: number;
     successCount?: number;
     failedCount?: number;
   };
+  errors?: BulkClaimItemDetail[];
+  failedDevices?: BulkClaimItemDetail[];
+  results?: BulkClaimItemDetail[];
+  details?: BulkClaimItemDetail[];
+  message?: string;
 };
 
 const SESSION_KEY = 'zt-web-session-v1';
@@ -76,6 +98,42 @@ function getErrorMessage(error: unknown): string {
 
   const maybeError = error as { message?: string };
   return maybeError.message || 'Error inesperado.';
+}
+
+function formatDate(dateStr?: string): string {
+  if (!dateStr || dateStr.trim() === '') {
+    return '-';
+  }
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      return dateStr;
+    }
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const yyyy = date.getFullYear();
+    const mm = pad(date.getMonth() + 1);
+    const dd = pad(date.getDate());
+    const hh = pad(date.getHours());
+    const min = pad(date.getMinutes());
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+  } catch {
+    return dateStr;
+  }
+}
+
+function translateClaimError(codeOrMessage?: string): string {
+  if (!codeOrMessage) return 'Fallo en la carga del dispositivo.';
+  const normalized = codeOrMessage.trim();
+  const map: Record<string, string> = {
+    DEVICE_NOT_FOUND: 'El dispositivo no existe o no está registrado en el fabricante.',
+    CANNOT_CLAIM_DEVICE: 'No se puede reclamar el dispositivo (puede pertenecer a otra cuenta o revendedor).',
+    DEVICE_ALREADY_CLAIMED: 'El dispositivo ya fue reclamado previamente.',
+    CUSTOMER_NOT_FOUND: 'El cliente no fue encontrado en la plataforma.',
+    CONFIGURATION_NOT_FOUND: 'La configuración o perfil no fue encontrado.',
+    INVALID_DEVICE_IDENTIFIER: 'Identificador de dispositivo no válido o mal formado.',
+    DEVICE_NOT_IN_RESELLER_INVENTORY: 'El dispositivo no está en el inventario del revendedor.',
+  };
+  return map[normalized] || normalized;
 }
 
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -116,10 +174,32 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
   }
 
   if (!response.ok) {
-    const message =
-      (payload as { message?: string })?.message ||
-      `Error HTTP ${response.status}`;
-    throw new Error(message);
+    const payloadObj = payload as Record<string, any>;
+    let message = payloadObj?.message || payloadObj?.detail;
+
+    if (Array.isArray(payloadObj?.errors) && payloadObj.errors.length > 0) {
+      const items = payloadObj.errors.map((e: any) => {
+        if (typeof e === 'string') return `• ${e}`;
+        const id = e.imei || e.serialNumber || e.identifier || e.deviceId || '';
+        const reason = translateClaimError(e.message || e.error || e.code || e.reason);
+        return id ? `• ${id}: ${reason}` : `• ${reason}`;
+      });
+      message = (message ? `${message}\n` : '') + items.join('\n');
+    } else if (payloadObj?.errors && typeof payloadObj.errors === 'object') {
+      const items = Object.entries(payloadObj.errors).map(
+        ([field, errs]) => `• ${field}: ${Array.isArray(errs) ? errs.join(', ') : errs}`
+      );
+      message = (message ? `${message}\n` : '') + items.join('\n');
+    } else if (Array.isArray(payloadObj?.failedDevices) && payloadObj.failedDevices.length > 0) {
+      const items = payloadObj.failedDevices.map((d: any) => {
+        const id = d.imei || d.serialNumber || d.identifier || d.deviceId || 'Dispositivo';
+        const reason = translateClaimError(d.message || d.error || d.code || d.reason);
+        return `• ${id}: ${reason}`;
+      });
+      message = (message ? `${message}\n` : '') + items.join('\n');
+    }
+
+    throw new Error(message || `Error HTTP ${response.status}`);
   }
 
   return payload as T;
@@ -135,6 +215,14 @@ function mapDevice(raw: RawDevice): ManagedDevice {
     raw.name ||
     'N/A';
 
+  const createdAt =
+    raw.claims?.[0]?.createTime ||
+    raw.createTime ||
+    raw.createdAt ||
+    raw.uploadDate ||
+    raw.createdDate ||
+    raw.registeredDate;
+
   return {
     id: raw.deviceId || raw.name || serialOrImei,
     serialOrImei,
@@ -142,8 +230,7 @@ function mapDevice(raw: RawDevice): ManagedDevice {
     manufacturer: raw.manufacturer || identifier.manufacturer || 'N/A',
     imei: identifier.imei,
     serialNumber: raw.serialNumber || identifier.serialNumber,
-    createdAt: raw.claims?.[0]?.createTime,
-    ownerCompanyId: raw.claims?.[0]?.ownerCompanyId,
+    createdAt,
   };
 }
 
@@ -248,6 +335,7 @@ function App() {
   const [deviceSearch, setDeviceSearch] = useState('');
   const [devicePageSize, setDevicePageSize] = useState(10);
   const [devicePage, setDevicePage] = useState(1);
+  const [dateSortOrder, setDateSortOrder] = useState<'desc' | 'asc' | 'none'>('desc');
   const [enrollmentPlatform, setEnrollmentPlatform] = useState<'zerotouch' | 'samsung'>('zerotouch');
 
   const [clientId, setClientId] = useState('');
@@ -267,6 +355,20 @@ function App() {
   const canCreate = parsedIdentifiers.length > 0 &&
     (identifierType === 'imei' || (bulkManufacturer.trim().length > 0 && bulkModel.trim().length > 0));
 
+  const imeiStats = useMemo(() => {
+    if (identifierType !== 'imei' && !isSamsungMode) {
+      return null;
+    }
+    if (parsedIdentifiers.length === 0) {
+      return null;
+    }
+    const invalidList = parsedIdentifiers.filter((id) => !/^\d{14,16}$/.test(id.trim()));
+    return {
+      invalidCount: invalidList.length,
+      invalidSamples: invalidList.slice(0, 3),
+    };
+  }, [parsedIdentifiers, identifierType, isSamsungMode]);
+
   const selectedModels = useMemo(
     () => modelsByManufacturer[bulkManufacturer] || [],
     [bulkManufacturer, modelsByManufacturer]
@@ -279,11 +381,13 @@ function App() {
     }
 
     return devices.filter((device) => {
+      const formattedDate = formatDate(device.createdAt).toLowerCase();
       const haystack = [
         device.serialOrImei,
         device.model,
         device.manufacturer,
-        device.ownerCompanyId || '',
+        device.createdAt || '',
+        formattedDate,
       ]
         .join(' ')
         .toLowerCase();
@@ -292,16 +396,31 @@ function App() {
     });
   }, [deviceSearch, devices]);
 
+  const sortedDevices = useMemo(() => {
+    if (dateSortOrder === 'none') {
+      return filteredDevices;
+    }
+
+    return [...filteredDevices].sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (dateSortOrder === 'desc') {
+        return timeB - timeA;
+      }
+      return timeA - timeB;
+    });
+  }, [filteredDevices, dateSortOrder]);
+
   const totalPages = useMemo(() => {
-    if (filteredDevices.length === 0) {
+    if (sortedDevices.length === 0) {
       return 1;
     }
-    return Math.ceil(filteredDevices.length / devicePageSize);
-  }, [filteredDevices.length, devicePageSize]);
+    return Math.ceil(sortedDevices.length / devicePageSize);
+  }, [sortedDevices.length, devicePageSize]);
 
   useEffect(() => {
     setDevicePage(1);
-  }, [deviceSearch, devicePageSize]);
+  }, [deviceSearch, devicePageSize, dateSortOrder]);
 
   useEffect(() => {
     if (devicePage > totalPages) {
@@ -311,8 +430,8 @@ function App() {
 
   const pagedDevices = useMemo(() => {
     const start = (devicePage - 1) * devicePageSize;
-    return filteredDevices.slice(start, start + devicePageSize);
-  }, [filteredDevices, devicePage, devicePageSize]);
+    return sortedDevices.slice(start, start + devicePageSize);
+  }, [sortedDevices, devicePage, devicePageSize]);
 
   async function cargarSesion(
     token: string,
@@ -653,9 +772,37 @@ function App() {
       return;
     }
 
-    if (parsedIdentifiers.length === 0) {
-      setErrorText('Agrega al menos un identificador.');
+    setErrorText('');
+    setSuccessText('');
+
+    // 1. Verificación de campo en blanco
+    if (bulkIdentifiersText.trim().length === 0 || parsedIdentifiers.length === 0) {
+      setErrorText(
+        identifierType === 'imei' || isSamsungMode
+          ? 'El campo de IMEI está en blanco. Por favor ingrese al menos un IMEI.'
+          : 'El campo de identificadores está en blanco. Por favor ingrese al menos un número de serie.'
+      );
       return;
+    }
+
+    // 2. Validación de formato de IMEI (si hay uno mal formado)
+    if (isSamsungMode || identifierType === 'imei') {
+      const invalidImeis: string[] = [];
+      for (const id of parsedIdentifiers) {
+        const val = id.trim();
+        if (!/^\d+$/.test(val)) {
+          invalidImeis.push(`• "${val}": contiene caracteres no válidos (un IMEI debe ser únicamente numérico).`);
+        } else if (val.length < 14 || val.length > 16) {
+          invalidImeis.push(`• "${val}": longitud incorrecta (${val.length} dígitos). Un IMEI debe tener 14, 15 o 16 dígitos.`);
+        }
+      }
+
+      if (invalidImeis.length > 0) {
+        setErrorText(
+          `Se detectaron errores en los siguientes IMEIs:\n${invalidImeis.join('\n')}\n\nPor favor corrija estos identificadores antes de enviar la carga.`
+        );
+        return;
+      }
     }
 
     if (!isSamsungMode && identifierType === 'serial' && (!bulkManufacturer.trim() || !bulkModel.trim())) {
@@ -678,8 +825,6 @@ function App() {
           }));
 
     setIsBusy(true);
-    setErrorText('');
-    setSuccessText('');
     try {
       const response = await apiRequest<BulkClaimResponse>(pathForBulkClaim(), {
         method: 'POST',
@@ -699,7 +844,60 @@ function App() {
       const ok = response.summary?.successCount ?? 0;
       const failed = response.summary?.failedCount ?? Math.max(0, total - ok);
 
-      setSuccessText(`Carga finalizada: ${ok}/${total} exitosos, ${failed} fallidos.`);
+      // Recopilar detalles específicos de error reportados por el backend
+      const failedList: Array<{ id: string; reason: string }> = [];
+      const sources = [
+        ...(Array.isArray(response.errors) ? response.errors : []),
+        ...(Array.isArray(response.failedDevices) ? response.failedDevices : []),
+        ...(Array.isArray(response.details) ? response.details : []),
+        ...(Array.isArray(response.results) ? response.results : []),
+      ];
+
+      for (const item of sources) {
+        const id =
+          item.imei ||
+          item.serialNumber ||
+          item.identifier ||
+          item.deviceId ||
+          item.deviceIdentifier?.imei ||
+          item.deviceIdentifier?.serialNumber ||
+          '';
+        const rawErr = item.error || item.message || item.errorCode || item.reason;
+        if (rawErr || item.status === 'FAILED' || item.status === 'DEVICE_CLAIM_STATUS_FAILED') {
+          failedList.push({
+            id: id || 'Dispositivo',
+            reason: translateClaimError(rawErr),
+          });
+        }
+      }
+
+      if (failed === 0 && ok > 0) {
+        setSuccessText(`Carga exitosa: todos los ${ok} dispositivo(s) fueron registrados correctamente.`);
+        setBulkIdentifiersText('');
+      } else if (ok > 0 && failed > 0) {
+        setSuccessText(`Carga parcial: ${ok} de ${total} dispositivo(s) registrados con éxito.`);
+        if (failedList.length > 0) {
+          setErrorText(
+            `Los siguientes ${failed} dispositivo(s) no pudieron ser cargados:\n` +
+            failedList.map((f) => `• ${f.id}: ${f.reason}`).join('\n')
+          );
+        } else {
+          setErrorText(
+            `Atención: ${failed} de ${total} dispositivo(s) fallaron al cargarse. Verifique que los identificadores existan en el fabricante y no pertenezcan a otra cuenta.`
+          );
+        }
+      } else {
+        if (failedList.length > 0) {
+          setErrorText(
+            `Fallo en la carga de los ${total} dispositivo(s):\n` +
+            failedList.map((f) => `• ${f.id}: ${f.reason}`).join('\n')
+          );
+        } else {
+          setErrorText(
+            `No se pudo cargar ningún dispositivo (${failed} fallidos). Verifique que los identificadores existan en el fabricante y no estén ya asignados a otro cliente.`
+          );
+        }
+      }
 
       await loadDevices(true);
       await loadIdentifierOptions(false);
@@ -1018,19 +1216,24 @@ function App() {
               </button>
             </form>
             <p className="hint">
-              Detectados: {parsedIdentifiers.length} identificadores.
+              Detectados: {parsedIdentifiers.length} identificador(es).
+              {imeiStats && imeiStats.invalidCount > 0 ? (
+                <span style={{ color: '#b91c1c', display: 'block', marginTop: '4px', fontWeight: 500 }}>
+                  ⚠️ {imeiStats.invalidCount} IMEI(s) con formato no válido (ej: {imeiStats.invalidSamples.join(', ')}). Deben tener 14 a 16 dígitos numéricos.
+                </span>
+              ) : null}
             </p>
           </section>
 
           <section className="panel">
-            <h2>Dispositivos ({filteredDevices.length}/{devices.length})</h2>
+            <h2>Dispositivos ({sortedDevices.length}/{devices.length})</h2>
             <label>
-              Buscar por Identificador, Modelo, Fabricante u Owner
+              Buscar por Identificador, Modelo, Fabricante o Fecha de adición
               <div className="search-input-wrap">
                 <input
                   value={deviceSearch}
                   onChange={(event) => setDeviceSearch(event.target.value)}
-                  placeholder="Ej: 50057711500955, Dispositivo, N/A, 1408308716"
+                  placeholder="Ej: 50057711500955, Dispositivo, Samsung, 2026-10"
                 />
                 {deviceSearch.trim() ? (
                   <button
@@ -1054,12 +1257,25 @@ function App() {
                 >
                   <option value={5}>5</option>
                   <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+              </label>
+              <label className="pagination-size">
+                Ordenar fecha
+                <select
+                  value={dateSortOrder}
+                  onChange={(event) => setDateSortOrder(event.target.value as 'desc' | 'asc' | 'none')}
+                >
+                  <option value="desc">Más recientes primero (Desc)</option>
+                  <option value="asc">Más antiguos primero (Asc)</option>
+                  <option value="none">Sin ordenar</option>
                 </select>
               </label>
               <p className="hint">
-                {filteredDevices.length === 0
+                {sortedDevices.length === 0
                   ? 'Mostrando 0 de 0'
-                  : `Mostrando ${(devicePage - 1) * devicePageSize + 1}-${Math.min(devicePage * devicePageSize, filteredDevices.length)} de ${filteredDevices.length}`}
+                  : `Mostrando ${(devicePage - 1) * devicePageSize + 1}-${Math.min(devicePage * devicePageSize, sortedDevices.length)} de ${sortedDevices.length}`}
               </p>
               <div className="pagination-actions">
                 <button
@@ -1088,7 +1304,19 @@ function App() {
                     <th>Identificador</th>
                     <th>Modelo</th>
                     <th>Fabricante</th>
-                    <th>Owner</th>
+                    <th
+                      className="sortable-th"
+                      onClick={() => {
+                        setDateSortOrder((current) => {
+                          if (current === 'desc') return 'asc';
+                          if (current === 'asc') return 'none';
+                          return 'desc';
+                        });
+                      }}
+                      title="Clic para organizar por fecha de añadido"
+                    >
+                      Date added {dateSortOrder === 'desc' ? '▼' : dateSortOrder === 'asc' ? '▲' : '↕'}
+                    </th>
                     <th>Accion</th>
                   </tr>
                 </thead>
@@ -1107,7 +1335,7 @@ function App() {
                         <td>{device.serialOrImei}</td>
                         <td>{device.model}</td>
                         <td>{device.manufacturer}</td>
-                        <td>{device.ownerCompanyId || '-'}</td>
+                        <td>{formatDate(device.createdAt)}</td>
                         <td>
                           <button
                             className="danger-btn"

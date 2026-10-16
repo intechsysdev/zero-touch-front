@@ -226,6 +226,7 @@ button:disabled {
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 14px;
+  white-space: pre-line;
 }
 
 .hint {
@@ -240,6 +241,7 @@ button:disabled {
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 14px;
+  white-space: pre-line;
 }
 
 textarea {
@@ -367,6 +369,16 @@ td {
 th {
   color: var(--muted);
   font-weight: 600;
+}
+
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+.sortable-th:hover {
+  color: var(--accent);
 }
 
 td {
