@@ -954,7 +954,20 @@ function App() {
     <main className={`app-shell ${isSamsungMode ? 'samsung-mode' : ''}`}>
       <header className="topbar">
         <div>
-          <p className="kicker">Intechsys Zero-touch</p>
+          {session ? (
+            <div className="marca-app">
+              <img src="/marca/marca.svg" alt="INTECHSYS ONE" height={40} />
+              <span className="producto">Zero-touch</span>
+            </div>
+          ) : (
+            <>
+              <div className="marca-entrada">
+                <img className="logo-ancho" src="/marca/logo.svg" alt="INTECHSYS ONE" width={360} />
+                <img className="logo-compacto" src="/marca/marca.svg" alt="INTECHSYS ONE" height={72} />
+              </div>
+              <p className="producto">Zero-touch</p>
+            </>
+          )}
           <h1>Console Web</h1>
         </div>
         {session ? (

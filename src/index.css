@@ -1,14 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
-
+/* Las fuentes (Inter y JetBrains Mono) se cargan desde index.html. */
 :root {
-  /* Marca Intechsys: carmesí para la acción, carbón para el texto, ámbar para lo que pide
-     atención. Eliminar va en el carmesí profundo, más oscuro que el botón principal. */
+  /* Marca INTECHSYS ONE (manual v1.0): rojo para la acción, gris profundo para el texto, ocre para
+     lo que pide atención. Eliminar va en el borgoña, más oscuro que el botón principal. */
   --brand-deep: #751326;
-  --brand-vivid: #e51e4a;
+  --brand-vivid: #e51e49;
   --brand-amber: #da830b;
+  /* El ocre no llega a 4,5:1 sobre blanco: para texto va este tono más oscuro. */
+  --brand-amber-text: #a35f07;
   --brand-band: linear-gradient(90deg, var(--brand-deep), var(--brand-vivid) 50%, var(--brand-deep));
 
-  --ink: #1f1f1d;
+  --ink: #1e1f1d;
   --muted: #5a5958;
   --paper: #f6f5f3;
   --card: #ffffff;
@@ -16,10 +17,13 @@
   --accent: #af1839;
   --accent-strong: #751326;
   --accent-soft: #fbebee;
-  --focus: rgba(229, 30, 74, 0.3);
+  --focus: rgba(229, 30, 73, 0.3);
   --danger: #751326;
   --danger-strong: #4e0c19;
-  --shadow: 0 16px 42px rgba(31, 31, 29, 0.1);
+  --shadow: 0 16px 42px rgba(30, 31, 29, 0.1);
+
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 * {
@@ -29,7 +33,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font-ui);
+  font-optical-sizing: auto;
   color: var(--ink);
   background:
     radial-gradient(circle at 15% 12%, #fbe6ea 0, transparent 35%),
@@ -67,16 +72,16 @@ p {
   /* Samsung Knox: la otra familia de la marca, carbón con ámbar. Así se nota de un vistazo en
      qué plataforma se están cargando equipos. */
   --accent: #3c3c3b;
-  --accent-strong: #1f1f1d;
+  --accent-strong: #1e1f1d;
   --accent-soft: #efeeec;
   --focus: rgba(218, 131, 11, 0.35);
   --card: #fcfbf9;
   --line: #dddad5;
-  --shadow: 0 18px 42px rgba(31, 31, 29, 0.14);
+  --shadow: 0 18px 42px rgba(30, 31, 29, 0.14);
 }
 
-.app-shell.samsung-mode .kicker {
-  color: #a35f07;
+.app-shell.samsung-mode .producto {
+  color: var(--brand-amber-text);
 }
 
 .topbar {
@@ -87,20 +92,49 @@ p {
   margin-bottom: 18px;
 }
 
-.kicker {
-  color: var(--accent-strong);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.72rem;
-  font-weight: 700;
+/* Marca: en la entrada el logo horizontal (la marca compacta en pantallas angostas); dentro de
+   la consola la marca compacta con el nombre del producto al lado. El nombre es texto, no logo. */
+.marca-entrada {
+  margin-bottom: 18px;
+}
+
+.marca-entrada img {
+  display: block;
+}
+
+.marca-entrada .logo-compacto {
+  display: none;
+}
+
+.marca-app {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.marca-app img {
+  display: block;
+  height: 40px;
+  width: auto;
+}
+
+.producto {
+  color: var(--ink);
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 h1 {
   font-size: clamp(1.8rem, 3.7vw, 2.8rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 h2 {
   font-size: 1.2rem;
+  font-weight: 600;
   margin-bottom: 10px;
 }
 
@@ -222,7 +256,7 @@ button:disabled {
 .error-banner {
   background: #f9e8eb;
   border: 1px solid #edb6c2;
-  color: #751326;
+  color: var(--danger);
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 14px;
@@ -382,7 +416,7 @@ th {
 }
 
 td {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.82rem;
 }
 
@@ -393,6 +427,16 @@ td {
 
   .form-grid-create {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 479px) {
+  .marca-entrada .logo-ancho {
+    display: none;
+  }
+
+  .marca-entrada .logo-compacto {
+    display: block;
   }
 }
 
