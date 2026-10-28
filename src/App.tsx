@@ -36,15 +36,54 @@ type RawDevice = {
   deviceId?: string;
   model?: string;
   manufacturer?: string;
+  brand?: string;
+  make?: string;
   serialNumber?: string;
+  imei?: string;
   deviceIdentifier?: DeviceIdentifier;
-  claims?: Array<{ ownerCompanyId?: string; createTime?: string }>;
+  claims?: Array<{ ownerCompanyId?: string; createTime?: string; claimTime?: string }>;
   createTime?: string;
   createdAt?: string;
   uploadDate?: string;
   createdDate?: string;
   registeredDate?: string;
+  transactionDate?: string;
+  modelName?: string;
+  modelNumber?: string;
+  deviceModel?: string;
 };
+
+type BrandStat = {
+  name: string;
+  count: number;
+  percentage: number;
+  color: string;
+  startAngle: number;
+  endAngle: number;
+  pathData: string;
+};
+
+const BRAND_COLORS = [
+  '#e51e4a', // Carmesí Intechsys
+  '#1f242e', // Carbón
+  '#da830b', // Ámbar
+  '#0d9488', // Teal
+  '#2563eb', // Azul
+  '#8b5cf6', // Violeta
+  '#f97316', // Naranja
+  '#06b6d4', // Cian
+  '#10b981', // Esmeralda
+  '#ec4899', // Rosa
+  '#64748b', // Pizarra
+];
+
+function getPoint(angleInDegrees: number, radius: number, cx = 100, cy = 100) {
+  const rad = ((angleInDegrees - 90) * Math.PI) / 180.0;
+  return {
+    x: cx + radius * Math.cos(rad),
+    y: cy + radius * Math.sin(rad),
+  };
+}
 
 type ManagedDevice = {
   id: string;
@@ -205,30 +244,47 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
   return payload as T;
 }
 
-function mapDevice(raw: RawDevice): ManagedDevice {
+function mapDevice(raw: RawDevice, isSamsung = false): ManagedDevice {
   const identifier = raw.deviceIdentifier || {};
   const serialOrImei =
     raw.serialNumber ||
     identifier.serialNumber ||
+    raw.imei ||
     identifier.imei ||
     raw.deviceId ||
     raw.name ||
     'N/A';
 
+  const rawModel =
+    raw.model ||
+    identifier.model ||
+    raw.modelName ||
+    raw.modelNumber ||
+    raw.deviceModel;
+
+  const rawManufacturer =
+    raw.manufacturer ||
+    identifier.manufacturer ||
+    raw.brand ||
+    raw.make ||
+    (isSamsung || raw.modelName?.toUpperCase().startsWith('SM-') ? 'Samsung' : undefined);
+
   const createdAt =
     raw.claims?.[0]?.createTime ||
+    raw.claims?.[0]?.claimTime ||
     raw.createTime ||
     raw.createdAt ||
     raw.uploadDate ||
     raw.createdDate ||
-    raw.registeredDate;
+    raw.registeredDate ||
+    raw.transactionDate;
 
   return {
     id: raw.deviceId || raw.name || serialOrImei,
     serialOrImei,
-    model: raw.model || identifier.model || 'Dispositivo',
-    manufacturer: raw.manufacturer || identifier.manufacturer || 'N/A',
-    imei: identifier.imei,
+    model: rawModel || (isSamsung ? 'Samsung Device' : 'Dispositivo'),
+    manufacturer: rawManufacturer || (isSamsung ? 'Samsung' : 'N/A'),
+    imei: raw.imei || identifier.imei,
     serialNumber: raw.serialNumber || identifier.serialNumber,
     createdAt,
   };
@@ -350,11 +406,76 @@ function App() {
   const [availableManufacturers, setAvailableManufacturers] = useState<string[]>([]);
   const [modelsByManufacturer, setModelsByManufacturer] = useState<Record<string, string[]>>({});
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [hoveredBrand, setHoveredBrand] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const parsedIdentifiers = useMemo(() => parseIdentifiers(bulkIdentifiersText), [bulkIdentifiersText]);
   const canCreate = parsedIdentifiers.length > 0 &&
     (identifierType === 'imei' || (bulkManufacturer.trim().length > 0 && bulkModel.trim().length > 0));
+
+  const brandStats = useMemo(() => {
+    if (devices.length === 0) {
+      return { total: 0, items: [] as BrandStat[] };
+    }
+
+    const counts: Record<string, number> = {};
+    for (const d of devices) {
+      const rawBrand = (d.manufacturer || '').trim();
+      const brand =
+        rawBrand && rawBrand !== 'N/A' && rawBrand.toLowerCase() !== 'unknown'
+          ? rawBrand
+          : isSamsungMode
+            ? 'Samsung'
+            : 'Sin especificar';
+      counts[brand] = (counts[brand] || 0) + 1;
+    }
+
+    const total = devices.length;
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+    let currentAngle = 0;
+    const items: BrandStat[] = sorted.map(([name, count], index) => {
+      const percentage = Number(((count / total) * 100).toFixed(1));
+      const angleSpan = (count / total) * 360;
+      const startAngle = currentAngle;
+      const endAngle = currentAngle + angleSpan;
+      currentAngle += angleSpan;
+
+      let pathData = '';
+      if (angleSpan < 359.99) {
+        const p1 = getPoint(startAngle, 80);
+        const p2 = getPoint(endAngle, 80);
+        const p3 = getPoint(endAngle, 50);
+        const p4 = getPoint(startAngle, 50);
+        const largeArc = angleSpan > 180 ? 1 : 0;
+
+        pathData = [
+          `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`,
+          `A 80 80 0 ${largeArc} 1 ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`,
+          `L ${p3.x.toFixed(2)} ${p3.y.toFixed(2)}`,
+          `A 50 50 0 ${largeArc} 0 ${p4.x.toFixed(2)} ${p4.y.toFixed(2)}`,
+          'Z',
+        ].join(' ');
+      }
+
+      return {
+        name,
+        count,
+        percentage,
+        color: BRAND_COLORS[index % BRAND_COLORS.length],
+        startAngle,
+        endAngle,
+        pathData,
+      };
+    });
+
+    return { total, items };
+  }, [devices, isSamsungMode]);
+
+  const hoveredBrandItem = useMemo(() => {
+    if (!hoveredBrand) return null;
+    return brandStats.items.find((item) => item.name === hoveredBrand) || null;
+  }, [hoveredBrand, brandStats.items]);
 
   const imeiStats = useMemo(() => {
     if (identifierType !== 'imei' && !isSamsungMode) {
@@ -669,7 +790,7 @@ function App() {
       );
 
       const list = Array.isArray(data.devices) ? data.devices : [];
-      setDevices(list.map(mapDevice));
+      setDevices(list.map((d) => mapDevice(d, isSamsungMode)));
     } catch (error) {
       setErrorText(getErrorMessage(error));
     } finally {
@@ -1059,10 +1180,6 @@ function App() {
               <p className="label">Client ID</p>
               <strong>{session.clientId}</strong>
             </div>
-            <div>
-              <p className="label">Customer ID</p>
-              <strong>{activeCustomerId || '-'}</strong>
-            </div>
             <button
               className="ghost-btn"
               type="button"
@@ -1235,6 +1352,169 @@ function App() {
                 </span>
               ) : null}
             </p>
+          </section>
+
+          <section className="panel chart-panel">
+            <div className="chart-panel-header">
+              <div>
+                <h2>Distribución por Marca</h2>
+                <p className="hint">
+                  {devices.length === 0
+                    ? 'No hay dispositivos registrados en esta plataforma.'
+                    : `Total: ${brandStats.total} ${brandStats.total === 1 ? 'dispositivo' : 'dispositivos'} en ${isSamsungMode ? 'Samsung Knox' : 'Zero-touch'}.`}
+                </p>
+              </div>
+              {deviceSearch.trim() && brandStats.items.some((b) => b.name.toLowerCase() === deviceSearch.trim().toLowerCase()) ? (
+                <button
+                  type="button"
+                  className="ghost-btn clear-filter-btn"
+                  onClick={() => setDeviceSearch('')}
+                >
+                  Filtro activo: <strong>{deviceSearch}</strong> ✕
+                </button>
+              ) : null}
+            </div>
+
+            {devices.length === 0 ? (
+              <div className="chart-empty-state">
+                <p>Sin dispositivos registrados para generar el diagrama de pastel.</p>
+              </div>
+            ) : (
+              <div className="chart-content">
+                <div className="chart-svg-wrap">
+                  <svg
+                    viewBox="0 0 200 200"
+                    className="pie-chart-svg"
+                    role="img"
+                    aria-label="Diagrama de pastel de dispositivos por marca"
+                  >
+                    {brandStats.items.length === 1 ? (
+                      <circle
+                        cx="100"
+                        cy="100"
+                        r="65"
+                        fill="none"
+                        stroke={brandStats.items[0].color}
+                        strokeWidth="30"
+                        className="pie-slice"
+                        onMouseEnter={() => setHoveredBrand(brandStats.items[0].name)}
+                        onMouseLeave={() => setHoveredBrand(null)}
+                        onClick={() => {
+                          setDeviceSearch((prev) =>
+                            prev.toLowerCase() === brandStats.items[0].name.toLowerCase()
+                              ? ''
+                              : brandStats.items[0].name
+                          );
+                        }}
+                      >
+                        <title>{`${brandStats.items[0].name}: ${brandStats.items[0].count} dispositivos (100%)`}</title>
+                      </circle>
+                    ) : (
+                      brandStats.items.map((item) => (
+                        <path
+                          key={item.name}
+                          d={item.pathData}
+                          fill={item.color}
+                          stroke="var(--card)"
+                          strokeWidth="1.5"
+                          className={`pie-slice ${hoveredBrand === item.name ? 'slice-hovered' : ''}`}
+                          onMouseEnter={() => setHoveredBrand(item.name)}
+                          onMouseLeave={() => setHoveredBrand(null)}
+                          onClick={() => {
+                            setDeviceSearch((prev) =>
+                              prev.toLowerCase() === item.name.toLowerCase() ? '' : item.name
+                            );
+                          }}
+                          style={{
+                            transition: 'transform 0.15s ease, opacity 0.15s ease',
+                            transformOrigin: '100px 100px',
+                            transform: hoveredBrand === item.name ? 'scale(1.04)' : 'scale(1)',
+                            opacity: hoveredBrand && hoveredBrand !== item.name ? 0.6 : 1,
+                          }}
+                        >
+                          <title>{`${item.name}: ${item.count} dispositivos (${item.percentage}%)`}</title>
+                        </path>
+                      ))
+                    )}
+
+                    {hoveredBrandItem ? (
+                      <g className="pie-center-text">
+                        <text
+                          x="100"
+                          y="86"
+                          textAnchor="middle"
+                          className="pie-center-percent"
+                          fill={hoveredBrandItem.color}
+                        >
+                          {hoveredBrandItem.percentage}%
+                        </text>
+                        <text x="100" y="104" textAnchor="middle" className="pie-center-name">
+                          {hoveredBrandItem.name.length > 14
+                            ? hoveredBrandItem.name.slice(0, 12) + '…'
+                            : hoveredBrandItem.name}
+                        </text>
+                        <text x="100" y="120" textAnchor="middle" className="pie-center-sub">
+                          {hoveredBrandItem.count} {hoveredBrandItem.count === 1 ? 'dispositivo' : 'dispositivos'}
+                        </text>
+                      </g>
+                    ) : (
+                      <g className="pie-center-text">
+                        <text x="100" y="88" textAnchor="middle" className="pie-center-total">
+                          {brandStats.total}
+                        </text>
+                        <text x="100" y="106" textAnchor="middle" className="pie-center-name">
+                          {brandStats.total === 1 ? 'Dispositivo' : 'Dispositivos'}
+                        </text>
+                        <text x="100" y="120" textAnchor="middle" className="pie-center-sub">
+                          {brandStats.items.length} {brandStats.items.length === 1 ? 'marca' : 'marcas'}
+                        </text>
+                      </g>
+                    )}
+                  </svg>
+                </div>
+
+                <div className="chart-legend">
+                  {brandStats.items.map((item) => (
+                    <div
+                      key={item.name}
+                      className={`legend-item ${hoveredBrand === item.name ? 'highlighted' : ''} ${
+                        deviceSearch.trim().toLowerCase() === item.name.toLowerCase()
+                          ? 'active-filter'
+                          : ''
+                      }`}
+                      onMouseEnter={() => setHoveredBrand(item.name)}
+                      onMouseLeave={() => setHoveredBrand(null)}
+                      onClick={() => {
+                        setDeviceSearch((prev) =>
+                          prev.toLowerCase() === item.name.toLowerCase() ? '' : item.name
+                        );
+                      }}
+                      title={`Clic para filtrar la tabla por ${item.name}`}
+                    >
+                      <div className="legend-row">
+                        <span className="legend-dot" style={{ backgroundColor: item.color }} />
+                        <span className="legend-name">{item.name}</span>
+                        <span className="legend-count">
+                          {item.count} {item.count === 1 ? 'disp.' : 'disp.'}
+                        </span>
+                        <span className="legend-percentage" style={{ color: item.color }}>
+                          {item.percentage}%
+                        </span>
+                      </div>
+                      <div className="legend-progress-track">
+                        <div
+                          className="legend-progress-bar"
+                          style={{
+                            width: `${Math.max(item.percentage, 2)}%`,
+                            backgroundColor: item.color,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="panel">
