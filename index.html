@@ -1,15 +1,30 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&family=JetBrains+Mono:wght@400..600&display=swap" />
     <title>Zero-touch · INTECHSYS ONE</title>
+    <script>
+      // Se estampa el tema antes de pintar. Si esto viviera en React, el primer cuadro saldría
+      // con el tema por defecto y el usuario vería un parpadeo blanco al recargar en oscuro.
+      (function () {
+        try {
+          var guardado = localStorage.getItem("zerotouch.tema");
+          if (guardado === "claro" || guardado === "oscuro") {
+            document.documentElement.dataset.theme = guardado === "claro" ? "light" : "dark";
+          }
+        } catch (e) {
+          /* sin localStorage se queda en el tema del sistema */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

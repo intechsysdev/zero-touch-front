@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import BarcodeScannerComponent from 'react-qr-barcode-scanner';
 import { acabaDeSalir, BACKEND_BASE_URL, cerrarSesionOne, iniciarSSO, marcarSalida, procesarCallbackSSO } from './sso';
+import { SelectorTema } from './componentes/SelectorTema';
+import { MarcaCompacta, LogoEntrada } from './componentes/Marca';
 
 type AuthSession = {
   accessToken: string;
@@ -1073,36 +1075,71 @@ function App() {
 
   return (
     <main className={`app-shell ${isSamsungMode ? 'samsung-mode' : ''}`}>
-      <header className="topbar">
-        <div>
-          {session ? (
-            <div className="marca-app">
-              <img src="/marca/marca.svg" alt="INTECHSYS ONE" height={40} />
-              <span className="producto">Zero-touch</span>
+      {session ? (
+        <header className="barra">
+          <div className="marca">
+            <MarcaCompacta />
+            <div className="marca-texto">
+              <span className="marca-nombre">Zero-touch</span>
+              <span className="rotulo">{session.companyName || 'Consola Web'}</span>
             </div>
-          ) : (
-            <>
-              <div className="marca-entrada">
-                <img className="logo-ancho" src="/marca/logo.svg" alt="INTECHSYS ONE" width={360} />
-                <img className="logo-compacto" src="/marca/marca.svg" alt="INTECHSYS ONE" height={72} />
-              </div>
-              <p className="producto">Zero-touch</p>
-            </>
-          )}
-          <h1>Console Web</h1>
-        </div>
-        {session ? (
-          <button className="ghost-btn" onClick={handleLogout} type="button">
-            Cerrar sesion
-          </button>
-        ) : null}
-      </header>
+          </div>
+
+          <div className="barra-derecha">
+            {session.availableTenants && session.availableTenants.length > 1 ? (
+              <select
+                className="selector-empresa"
+                aria-label="Empresa activa"
+                value={session.oneTenantId || ''}
+                onChange={(e) => {
+                  const selected = session.availableTenants?.find(
+                    (t) => t.oneTenantId === e.target.value
+                  );
+                  if (selected) {
+                    void cargarSesion(session.accessToken, selected.oneTenantId, session.refreshToken);
+                  }
+                }}
+              >
+                {session.availableTenants.map((t) => (
+                  <option key={t.oneTenantId} value={t.oneTenantId}>
+                    {t.nombre}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+
+            <SelectorTema />
+
+            <span className="correo" title={`Cliente: ${session.companyName}`}>
+              {session.companyName}
+            </span>
+
+            <button className="boton-salir" onClick={handleLogout} type="button" title="Cerrar sesión">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span>Salir</span>
+            </button>
+          </div>
+        </header>
+      ) : (
+        <header className="barra-ingreso">
+          <SelectorTema />
+        </header>
+      )}
 
       {errorText ? <div className="error-banner">{errorText}</div> : null}
       {successText ? <div className="success-banner">{successText}</div> : null}
 
       {!session ? (
         <section className="panel login-panel">
+          <div className="marca-entrada">
+            <LogoEntrada />
+            <p className="producto">Zero-touch</p>
+            <h1>Console Web</h1>
+          </div>
           <h2>Ingreso por cliente</h2>
           <p>
             Escriba su Client ID. Lo llevaremos a Intechsys One para que inicie sesión con su usuario,
@@ -1151,7 +1188,8 @@ function App() {
                     padding: '0.4rem 0.6rem',
                     borderRadius: '6px',
                     border: '1px solid var(--line)',
-                    background: '#fff',
+                    background: 'var(--card)',
+                    color: 'var(--ink)',
                     fontWeight: 600,
                   }}
                   onChange={(e) => {

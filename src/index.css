@@ -1,18 +1,28 @@
-/* Las fuentes (Inter y JetBrains Mono) se cargan desde index.html. */
+/* ==========================================================================
+   Sistema de color y tipografía — INTECHSYS ONE (manual v1.0)
+
+   Tres estados, no dos: una elección explícita estampa data-theme en la raíz,
+   y el ajuste "sistema" no estampa nada y sigue prefers-color-scheme.
+   Por eso los tokens se definen en :root, se redefinen en la media query
+   con :not([data-theme="light"]), y en :root[data-theme="dark"].
+   ========================================================================== */
+
 :root {
-  /* Marca INTECHSYS ONE (manual v1.0): rojo para la acción, gris profundo para el texto, ocre para
-     lo que pide atención. Eliminar va en el borgoña, más oscuro que el botón principal. */
+  color-scheme: light;
+
+  /* Marca INTECHSYS ONE: rojo para la acción, gris profundo para el texto, ocre para atención */
   --brand-deep: #751326;
   --brand-vivid: #e51e49;
   --brand-amber: #da830b;
-  /* El ocre no llega a 4,5:1 sobre blanco: para texto va este tono más oscuro. */
   --brand-amber-text: #a35f07;
   --brand-band: linear-gradient(90deg, var(--brand-deep), var(--brand-vivid) 50%, var(--brand-deep));
 
   --ink: #1e1f1d;
   --muted: #5a5958;
-  --paper: #f6f5f3;
+  --paper: #f7f6f4;
   --card: #ffffff;
+  --surface-2: #f0efec;
+  --surface-3: #e7e5e1;
   --line: #e4e2de;
   --accent: #af1839;
   --accent-strong: #751326;
@@ -20,10 +30,89 @@
   --focus: rgba(229, 30, 73, 0.3);
   --danger: #751326;
   --danger-strong: #4e0c19;
-  --shadow: 0 16px 42px rgba(30, 31, 29, 0.1);
+  --shadow: 0 16px 42px rgba(30, 31, 29, 0.08);
+
+  --table-zebra: #faf9f8;
+  --table-hover: #f1f0ee;
 
   --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --paper: #181917;
+    --card: #252624;
+    --surface-2: #2e302d;
+    --surface-3: #393b38;
+    --line: #3b3d3a;
+
+    --ink: #f4f3f0;
+    --muted: #9c9a96;
+
+    --accent: #e51e49;
+    --accent-strong: #f04e70;
+    --accent-soft: #381a22;
+    --focus: rgba(229, 30, 73, 0.45);
+
+    --danger: #e51e49;
+    --danger-strong: #f04e70;
+    --shadow: 0 16px 42px rgba(0, 0, 0, 0.35);
+
+    --table-zebra: #20211f;
+    --table-hover: #2d2e2b;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper: #181917;
+  --card: #252624;
+  --surface-2: #2e302d;
+  --surface-3: #393b38;
+  --line: #3b3d3a;
+
+  --ink: #f4f3f0;
+  --muted: #9c9a96;
+
+  --accent: #e51e49;
+  --accent-strong: #f04e70;
+  --accent-soft: #381a22;
+  --focus: rgba(229, 30, 73, 0.45);
+
+  --danger: #e51e49;
+  --danger-strong: #f04e70;
+  --shadow: 0 16px 42px rgba(0, 0, 0, 0.35);
+
+  --table-zebra: #20211f;
+  --table-hover: #2d2e2b;
+}
+
+/* Modos claro / oscuro para imágenes y logotipos sin parpadeo */
+.solo-claro {
+  display: block;
+}
+.solo-oscuro {
+  display: none !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .solo-claro {
+    display: none !important;
+  }
+  :root:not([data-theme="light"]) .solo-oscuro {
+    display: block !important;
+  }
+}
+
+:root[data-theme="dark"] .solo-claro {
+  display: none !important;
+}
+:root[data-theme="dark"] .solo-oscuro {
+  display: block !important;
 }
 
 * {
@@ -40,6 +129,23 @@ body {
     radial-gradient(circle at 15% 12%, #fbe6ea 0, transparent 35%),
     radial-gradient(circle at 82% 10%, #fdf0d6 0, transparent 40%),
     linear-gradient(180deg, #faf9f8 0, var(--paper) 100%);
+  transition: background 0.25s ease, color 0.2s ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body {
+    background:
+      radial-gradient(circle at 15% 12%, #2c1218 0, transparent 35%),
+      radial-gradient(circle at 82% 10%, #2b2110 0, transparent 40%),
+      linear-gradient(180deg, #1a1a18 0, var(--paper) 100%);
+  }
+}
+
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at 15% 12%, #2c1218 0, transparent 35%),
+    radial-gradient(circle at 82% 10%, #2b2110 0, transparent 40%),
+    linear-gradient(180deg, #1a1a18 0, var(--paper) 100%);
 }
 
 #root {
@@ -65,12 +171,11 @@ p {
 .app-shell {
   max-width: 1140px;
   margin: 0 auto;
-  padding: 28px 18px 56px;
+  padding: 24px 18px 56px;
 }
 
+/* Samsung Knox Mode */
 .app-shell.samsung-mode {
-  /* Samsung Knox: la otra familia de la marca, carbón con ámbar. Así se nota de un vistazo en
-     qué plataforma se están cargando equipos. */
   --accent: #3c3c3b;
   --accent-strong: #1e1f1d;
   --accent-soft: #efeeec;
@@ -80,50 +185,246 @@ p {
   --shadow: 0 18px 42px rgba(30, 31, 29, 0.14);
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .app-shell.samsung-mode {
+    --accent: #e5a93b;
+    --accent-strong: #f8b21d;
+    --accent-soft: #2e2617;
+    --focus: rgba(218, 131, 11, 0.45);
+    --card: #272624;
+    --line: #42403b;
+    --shadow: 0 18px 42px rgba(0, 0, 0, 0.4);
+    --table-zebra: #21201e;
+    --table-hover: #2c2b28;
+  }
+}
+
+:root[data-theme="dark"] .app-shell.samsung-mode {
+  --accent: #e5a93b;
+  --accent-strong: #f8b21d;
+  --accent-soft: #2e2617;
+  --focus: rgba(218, 131, 11, 0.45);
+  --card: #272624;
+  --line: #42403b;
+  --shadow: 0 18px 42px rgba(0, 0, 0, 0.4);
+  --table-zebra: #21201e;
+  --table-hover: #2c2b28;
+}
+
 .app-shell.samsung-mode .producto {
   color: var(--brand-amber-text);
 }
 
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-  gap: 12px;
-  margin-bottom: 18px;
-}
+/* ==========================================================================
+   Barra Superior (Header & Sesión)
+   ========================================================================== */
 
-/* Marca: en la entrada el logo horizontal (la marca compacta en pantallas angostas); dentro de
-   la consola la marca compacta con el nombre del producto al lado. El nombre es texto, no logo. */
-.marca-entrada {
-  margin-bottom: 18px;
-}
-
-.marca-entrada img {
-  display: block;
-}
-
-.marca-entrada .logo-compacto {
-  display: none;
-}
-
-.marca-app {
+.barra {
+  position: sticky;
+  top: 10px;
+  z-index: 40;
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 22px;
+  overflow: hidden;
+  position: relative;
 }
 
-.marca-app img {
+/* Franja de la guía de marca, bajo la barra: la firma de Intechsys en cada pantalla */
+.barra::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 3px;
+  background: var(--brand-band);
+}
+
+.marca {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.marca-logo {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.marca-logo img {
   display: block;
-  height: 40px;
+  height: 36px;
   width: auto;
 }
 
-.producto {
+.marca-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.marca-nombre {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
   color: var(--ink);
-  font-size: 1.1rem;
+}
+
+.rotulo {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.barra-derecha {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.barra-ingreso {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+
+.selector-empresa {
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.selector-empresa:hover,
+.selector-empresa:focus {
+  border-color: var(--accent);
+}
+
+.correo {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 500;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 680px) {
+  .correo {
+    display: none;
+  }
+}
+
+.boton-salir {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--accent-soft);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.boton-salir:hover {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+/* Selector de Tema segmentado en píldora */
+.tema {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.tema button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 9px;
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tema button:hover {
+  color: var(--ink);
+}
+
+.tema button[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.tema svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* Pantalla de login / entrada */
+.marca-entrada {
+  margin-bottom: 20px;
+}
+
+.marca-entrada .producto {
+  color: var(--ink);
+  font-size: 1.15rem;
   font-weight: 600;
   letter-spacing: -0.01em;
+  margin-top: 6px;
+}
+
+.ingreso-logo img {
+  display: block;
+  width: 340px;
+  max-width: 100%;
+  height: auto;
+}
+
+@media (max-width: 479px) {
+  .ingreso-logo img {
+    width: auto;
+    height: 64px;
+  }
 }
 
 h1 {
@@ -145,10 +446,12 @@ h2 {
   box-shadow: var(--shadow);
   padding: 18px;
   margin-bottom: 16px;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .login-panel {
   max-width: 560px;
+  margin: 0 auto;
 }
 
 .info-panel {
@@ -184,10 +487,11 @@ input {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   font: inherit;
   padding: 10px 12px;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 input:focus {
@@ -198,10 +502,16 @@ input:focus {
 select {
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   font: inherit;
   padding: 8px 10px;
+  transition: border-color 0.15s;
+}
+
+select:focus {
+  outline: 2px solid var(--focus);
+  border-color: var(--accent);
 }
 
 button {
@@ -218,9 +528,9 @@ button {
   color: #ffffff;
 }
 
-/* Secundarios en neutro: el carmesí queda para la acción principal y para el hover. */
+/* Secundarios en neutro */
 .ghost-btn {
-  background: #efeeec;
+  background: var(--surface-2);
   color: var(--ink);
 }
 
@@ -229,7 +539,7 @@ button {
   color: var(--accent-strong);
 }
 
-/* Acción secundaria dentro de un texto. */
+/* Acción secundaria dentro de un texto */
 .link-btn {
   background: none;
   padding: 0;
@@ -263,6 +573,20 @@ button:disabled {
   white-space: pre-line;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .error-banner {
+    background: #36171d;
+    border-color: #6b2633;
+    color: #f79aa9;
+  }
+}
+
+:root[data-theme="dark"] .error-banner {
+  background: #36171d;
+  border-color: #6b2633;
+  color: #f79aa9;
+}
+
 .hint {
   margin-top: 8px;
   color: var(--muted);
@@ -278,11 +602,25 @@ button:disabled {
   white-space: pre-line;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .success-banner {
+    background: #122c22;
+    border-color: #1c5e47;
+    color: #8ae0bd;
+  }
+}
+
+:root[data-theme="dark"] .success-banner {
+  background: #122c22;
+  border-color: #1c5e47;
+  color: #8ae0bd;
+}
+
 textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   font: inherit;
   padding: 10px 12px;
@@ -318,7 +656,7 @@ textarea:focus {
   gap: 6px;
   padding: 4px;
   border-radius: 12px;
-  background: #efeeec;
+  background: var(--surface-2);
 }
 
 .tab-btn {
@@ -335,7 +673,7 @@ textarea:focus {
   border: 1px dashed var(--line);
   border-radius: 12px;
   padding: 12px;
-  background: #faf9f8;
+  background: var(--surface-2);
 }
 
 .table-wrap {
@@ -354,7 +692,7 @@ textarea:focus {
   height: 34px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: #f1f0ee;
+  background: var(--surface-2);
   color: var(--muted);
   padding: 0;
   font-size: 1rem;
@@ -420,6 +758,14 @@ td {
   font-size: 0.82rem;
 }
 
+tbody tr:nth-child(even) {
+  background: var(--table-zebra);
+}
+
+tbody tr:hover {
+  background: var(--table-hover);
+}
+
 @media (max-width: 960px) {
   .info-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -430,24 +776,15 @@ td {
   }
 }
 
-@media (max-width: 479px) {
-  .marca-entrada .logo-ancho {
-    display: none;
-  }
-
-  .marca-entrada .logo-compacto {
-    display: block;
-  }
-}
-
 @media (max-width: 620px) {
   .app-shell {
-    padding: 18px 12px 44px;
+    padding: 16px 12px 44px;
   }
 
-  .topbar {
-    flex-direction: column;
-    align-items: start;
+  .barra {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 10px 14px;
   }
 
   .info-panel,
@@ -456,7 +793,10 @@ td {
   }
 }
 
-/* Panel del gráfico de pastel (Distribución por Marca) */
+/* ==========================================================================
+   Panel del gráfico de pastel (Distribución por Marca)
+   ========================================================================== */
+
 .chart-panel-header {
   display: flex;
   justify-content: space-between;
@@ -506,26 +846,26 @@ td {
   font-size: 1.7rem;
   font-weight: 700;
   fill: var(--ink);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font-ui);
 }
 
 .pie-center-percent {
   font-size: 1.45rem;
   font-weight: 700;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font-ui);
 }
 
 .pie-center-name {
   font-size: 0.72rem;
   font-weight: 600;
   fill: var(--ink);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font-ui);
 }
 
 .pie-center-sub {
   font-size: 0.65rem;
   fill: var(--muted);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font-ui);
 }
 
 .chart-legend {
@@ -541,7 +881,7 @@ td {
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: #faf9f8;
+  background: var(--surface-2);
   cursor: pointer;
   user-select: none;
   transition: all 0.15s ease;
@@ -586,13 +926,13 @@ td {
 .legend-count {
   font-size: 0.8rem;
   color: var(--muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .legend-percentage {
   font-weight: 700;
   font-size: 0.85rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   min-width: 48px;
   text-align: right;
 }
@@ -601,7 +941,7 @@ td {
   width: 100%;
   height: 4px;
   border-radius: 999px;
-  background: #e4e2de;
+  background: var(--line);
   overflow: hidden;
 }
 
