@@ -18,11 +18,16 @@ type AuthSession = {
     slug: string;
     oneTenantId: string;
     zeroTouchCustomerName?: string;
+    zeroTouchCustomerId?: string | null;
+    samsungAvailable?: boolean;
+    samsungCustomerId?: string | null;
+    platformType?: 'both' | 'samsung_only' | 'zerotouch_only' | 'none';
   }>;
   zeroTouchAvailable?: boolean;
   samsungAvailable?: boolean;
   zeroTouchCustomerId?: string;
   samsungCustomerId?: string;
+  platformType?: 'both' | 'samsung_only' | 'zerotouch_only' | 'none';
   preferredEnrollment?: 'zerotouch' | 'samsung';
 };
 
@@ -412,8 +417,11 @@ function App() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const parsedIdentifiers = useMemo(() => parseIdentifiers(bulkIdentifiersText), [bulkIdentifiersText]);
-  const canCreate = parsedIdentifiers.length > 0 &&
-    (identifierType === 'imei' || (bulkManufacturer.trim().length > 0 && bulkModel.trim().length > 0));
+  const canCreate =
+    parsedIdentifiers.length > 0 &&
+    (isSamsungMode
+      ? bulkConfigurationId.trim().length > 0
+      : identifierType === 'imei' || (bulkManufacturer.trim().length > 0 && bulkModel.trim().length > 0));
 
   const brandStats = useMemo(() => {
     if (devices.length === 0) {
@@ -575,6 +583,11 @@ function App() {
         slug?: string;
         oneTenantId?: string;
         zeroTouchCustomerName?: string;
+        zeroTouchAvailable?: boolean;
+        zeroTouchCustomerId?: string | null;
+        samsungAvailable?: boolean;
+        samsungCustomerId?: string | null;
+        platformType?: 'both' | 'samsung_only' | 'zerotouch_only' | 'none';
       }>;
       tenantActivo: {
         id?: number | null;
@@ -589,6 +602,7 @@ function App() {
         zeroTouchCustomerId?: string | null;
         samsungAvailable?: boolean;
         samsungCustomerId?: string | null;
+        platformType?: 'both' | 'samsung_only' | 'zerotouch_only' | 'none';
       } | null;
     }>('/api/v1/sesion', { headers: reqHeaders });
 
@@ -602,8 +616,6 @@ function App() {
       throw new Error('Su usuario no tiene empresas con Zero-touch en Intechsys One.');
     }
 
-    // Un API anterior no trae las plataformas: entonces Zero-touch queda habilitado y el API
-    // resuelve el customer, como hacía la consola antes.
     const zeroTouchAvailable = active.zeroTouchAvailable ?? true;
     const samsungAvailable = Boolean(active.samsungAvailable);
     const zeroTouchCustomerId =
@@ -622,12 +634,22 @@ function App() {
         slug: e.slug || '',
         oneTenantId: e.oneTenantId || '',
         zeroTouchCustomerName: e.zeroTouchCustomerName,
+        zeroTouchCustomerId: e.zeroTouchCustomerId,
+        samsungAvailable: e.samsungAvailable,
+        samsungCustomerId: e.samsungCustomerId,
+        platformType: e.platformType,
       })),
       zeroTouchAvailable,
       samsungAvailable,
       zeroTouchCustomerId,
       samsungCustomerId: active.samsungCustomerId || undefined,
-      preferredEnrollment: zeroTouchAvailable || !samsungAvailable ? 'zerotouch' : 'samsung',
+      platformType: active.platformType,
+      preferredEnrollment:
+        active.platformType === 'samsung_only'
+          ? 'samsung'
+          : zeroTouchAvailable || !samsungAvailable
+            ? 'zerotouch'
+            : 'samsung',
     };
 
     setEnrollmentPlatform(newSession.preferredEnrollment ?? 'zerotouch');
@@ -767,29 +789,46 @@ function App() {
       return;
     }
 
-    if (isSamsungMode && !activeCustomerId) {
-      return;
-    }
-
     setIsBusy(true);
     setErrorText('');
     try {
-      const data = await apiRequest<{ devices: RawDevice[] }>(
-        `${pathForDevices()}${
-          activeCustomerId
-            ? `?customerId=${encodeURIComponent(activeCustomerId)}${
-                forceSync && !isSamsungMode ? '&forceSync=true' : ''
-              }`
-            : forceSync && !isSamsungMode
-              ? '?forceSync=true'
-              : ''
-        }`,
+      let queryParamStr = '';
+      if (isSamsungMode) {
+        if (session.samsungCustomerId) {
+          queryParamStr = `?customerId=${encodeURIComponent(session.samsungCustomerId)}`;
+        }
+      } else {
+        const params = new URLSearchParams();
+        if (session.zeroTouchCustomerId) {
+          params.set('customerId', session.zeroTouchCustomerId);
+        }
+        if (forceSync) {
+          params.set('forceSync', 'true');
+        }
+        const qs = params.toString();
+        if (qs) queryParamStr = `?${qs}`;
+      }
+
+      const data = await apiRequest<{ customerId?: string; devices: RawDevice[] }>(
+        `${pathForDevices()}${queryParamStr}`,
         {
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
           },
         }
       );
+
+      if (isSamsungMode && data.customerId && data.customerId !== session.samsungCustomerId) {
+        const updatedSession: AuthSession = {
+          ...session,
+          samsungCustomerId: data.customerId,
+          samsungAvailable: true,
+        };
+        setSession(updatedSession);
+        try {
+          localStorage.setItem(SESSION_KEY, JSON.stringify(updatedSession));
+        } catch {}
+      }
 
       const list = Array.isArray(data.devices) ? data.devices : [];
       setDevices(list.map((d) => mapDevice(d, isSamsungMode)));
@@ -842,6 +881,20 @@ function App() {
       return;
     }
 
+    if (isSamsungMode) {
+      const csv = `imei\n354612454006911\n354612454006922\n`;
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `samsung-knox-template.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
     const owner = session.zeroTouchCustomerId || session.clientId;
     const csv =
       identifierType === 'imei'
@@ -887,10 +940,6 @@ function App() {
   async function handleCreateDevice(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!session) {
-      return;
-    }
-
-    if (isSamsungMode && !activeCustomerId) {
       return;
     }
 
@@ -954,7 +1003,9 @@ function App() {
           Authorization: `Bearer ${session.accessToken}`,
         },
         body: JSON.stringify({
-          customerId: activeCustomerId || undefined,
+          customerId: isSamsungMode
+            ? (session.samsungCustomerId || undefined)
+            : (session.zeroTouchCustomerId || activeCustomerId || undefined),
           identifierType: isSamsungMode ? 'imei' : identifierType,
           profileId: isSamsungMode ? bulkConfigurationId.trim() : undefined,
           configurationId: isSamsungMode ? undefined : (bulkConfigurationId.trim() || undefined),
@@ -1234,7 +1285,6 @@ function App() {
               <button
                 className={enrollmentPlatform === 'zerotouch' ? 'tab-btn active' : 'tab-btn'}
                 type="button"
-                disabled={!session.zeroTouchAvailable}
                 onClick={() => setEnrollmentPlatform('zerotouch')}
               >
                 Zero-touch
@@ -1242,7 +1292,6 @@ function App() {
               <button
                 className={enrollmentPlatform === 'samsung' ? 'tab-btn active' : 'tab-btn'}
                 type="button"
-                disabled={!session.samsungAvailable}
                 onClick={() => setEnrollmentPlatform('samsung')}
               >
                 Samsung Knox
@@ -1379,7 +1428,7 @@ function App() {
                 />
               </label>
               <button className="primary-btn" type="submit" disabled={!canCreate || isBusy}>
-                {isBusy ? 'Procesando...' : 'Cargar lote en Zero-touch'}
+                {isBusy ? 'Procesando...' : isSamsungMode ? 'Cargar lote en Samsung Knox' : 'Cargar lote en Zero-touch'}
               </button>
             </form>
             <p className="hint">
