@@ -49,13 +49,13 @@ type RawDevice = {
   serialNumber?: string;
   imei?: string;
   deviceIdentifier?: DeviceIdentifier;
-  claims?: Array<{ ownerCompanyId?: string; createTime?: string; claimTime?: string }>;
-  createTime?: string;
-  createdAt?: string;
-  uploadDate?: string;
-  createdDate?: string;
-  registeredDate?: string;
-  transactionDate?: string;
+  claims?: Array<{ ownerCompanyId?: string; createTime?: string | number; claimTime?: string | number }>;
+  createTime?: string | number;
+  createdAt?: string | number;
+  uploadDate?: string | number;
+  createdDate?: string | number;
+  registeredDate?: string | number;
+  transactionDate?: string | number;
   modelName?: string;
   modelNumber?: string;
   deviceModel?: string;
@@ -100,7 +100,7 @@ type ManagedDevice = {
   manufacturer: string;
   imei?: string;
   serialNumber?: string;
-  createdAt?: string;
+  createdAt?: string | number;
 };
 
 type IdentifierType = 'imei' | 'serial';
@@ -147,15 +147,82 @@ function getErrorMessage(error: unknown): string {
   return maybeError.message || 'Error inesperado.';
 }
 
-function formatDate(dateStr?: string): string {
-  if (!dateStr || dateStr.trim() === '') {
+function parseDateTimestamp(val: unknown): number {
+  if (val === null || val === undefined || val === '') {
+    return 0;
+  }
+  if (typeof val === 'number') {
+    return val < 1e11 ? val * 1000 : val;
+  }
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return 0;
+    if (/^\d{10,13}$/.test(trimmed)) {
+      const num = Number(trimmed);
+      return num < 1e11 ? num * 1000 : num;
+    }
+    const parsed = new Date(trimmed).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  if (typeof val === 'object' && val !== null) {
+    const obj = val as Record<string, any>;
+    if (typeof obj.seconds === 'number') {
+      return obj.seconds * 1000;
+    }
+    if (typeof obj._seconds === 'number') {
+      return obj._seconds * 1000;
+    }
+    if (val instanceof Date) {
+      return val.getTime();
+    }
+  }
+  return 0;
+}
+
+function formatDate(dateVal?: unknown): string {
+  if (dateVal === null || dateVal === undefined) {
     return '-';
   }
-  try {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) {
-      return dateStr;
+
+  let rawDate: unknown = dateVal;
+  if (typeof dateVal === 'object' && dateVal !== null) {
+    const obj = dateVal as Record<string, any>;
+    if (typeof obj.seconds === 'number') {
+      rawDate = obj.seconds * 1000;
+    } else if (typeof obj._seconds === 'number') {
+      rawDate = obj._seconds * 1000;
     }
+  }
+
+  if (typeof rawDate === 'string') {
+    const trimmed = rawDate.trim();
+    if (!trimmed) {
+      return '-';
+    }
+    if (/^\d{10,13}$/.test(trimmed)) {
+      rawDate = Number(trimmed);
+    } else {
+      rawDate = trimmed;
+    }
+  }
+
+  try {
+    let date: Date;
+    if (typeof rawDate === 'number') {
+      const millis = rawDate < 1e11 ? rawDate * 1000 : rawDate;
+      date = new Date(millis);
+    } else if (typeof rawDate === 'string') {
+      date = new Date(rawDate);
+    } else if (rawDate instanceof Date) {
+      date = rawDate;
+    } else {
+      return '-';
+    }
+
+    if (isNaN(date.getTime())) {
+      return String(rawDate);
+    }
+
     const pad = (n: number) => String(n).padStart(2, '0');
     const yyyy = date.getFullYear();
     const mm = pad(date.getMonth() + 1);
@@ -164,13 +231,14 @@ function formatDate(dateStr?: string): string {
     const min = pad(date.getMinutes());
     return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
   } catch {
-    return dateStr;
+    return typeof rawDate === 'string' || typeof rawDate === 'number' ? String(rawDate) : '-';
   }
 }
 
-function translateClaimError(codeOrMessage?: string): string {
+function translateClaimError(codeOrMessage?: unknown): string {
   if (!codeOrMessage) return 'Fallo en la carga del dispositivo.';
-  const normalized = codeOrMessage.trim();
+  const str = typeof codeOrMessage === 'string' ? codeOrMessage : String(codeOrMessage);
+  const normalized = str.trim();
   const map: Record<string, string> = {
     DEVICE_NOT_FOUND: 'El dispositivo no existe o no está registrado en el fabricante.',
     CANNOT_CLAIM_DEVICE: 'No se puede reclamar el dispositivo (puede pertenecer a otra cuenta o revendedor).',
@@ -261,14 +329,15 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
 
 function mapDevice(raw: RawDevice, isSamsung = false): ManagedDevice {
   const identifier = raw.deviceIdentifier || {};
-  const serialOrImei =
+  const serialOrImei = String(
     raw.serialNumber ||
     identifier.serialNumber ||
     raw.imei ||
     identifier.imei ||
     raw.deviceId ||
     raw.name ||
-    'N/A';
+    'N/A'
+  );
 
   const rawModel =
     raw.model ||
@@ -285,30 +354,31 @@ function mapDevice(raw: RawDevice, isSamsung = false): ManagedDevice {
     (isSamsung || raw.modelName?.toUpperCase().startsWith('SM-') ? 'Samsung' : undefined);
 
   const createdAt =
-    raw.claims?.[0]?.createTime ||
-    raw.claims?.[0]?.claimTime ||
-    raw.createTime ||
-    raw.createdAt ||
-    raw.uploadDate ||
-    raw.createdDate ||
-    raw.registeredDate ||
+    raw.claims?.[0]?.createTime ??
+    raw.claims?.[0]?.claimTime ??
+    raw.createTime ??
+    raw.createdAt ??
+    raw.uploadDate ??
+    raw.createdDate ??
+    raw.registeredDate ??
     raw.transactionDate;
 
   return {
-    id: raw.deviceId || raw.name || serialOrImei,
+    id: String(raw.deviceId || raw.name || serialOrImei),
     serialOrImei,
-    model: rawModel || (isSamsung ? 'Samsung Device' : 'Dispositivo'),
-    manufacturer: rawManufacturer || (isSamsung ? 'Samsung' : 'N/A'),
-    imei: raw.imei || identifier.imei,
-    serialNumber: raw.serialNumber || identifier.serialNumber,
+    model: String(rawModel || (isSamsung ? 'Samsung Device' : 'Dispositivo')),
+    manufacturer: String(rawManufacturer || (isSamsung ? 'Samsung' : 'N/A')),
+    imei: raw.imei || identifier.imei ? String(raw.imei || identifier.imei) : undefined,
+    serialNumber: raw.serialNumber || identifier.serialNumber ? String(raw.serialNumber || identifier.serialNumber) : undefined,
     createdAt,
   };
 }
 
-function mergeUnique(values: string[]): string[] {
+function mergeUnique(values: unknown[]): string[] {
   const seen = new Set<string>();
   const unique: string[] = [];
   for (const item of values) {
+    if (typeof item !== 'string') continue;
     const normalized = item.trim();
     if (!normalized || seen.has(normalized)) {
       continue;
@@ -320,7 +390,8 @@ function mergeUnique(values: string[]): string[] {
 }
 
 function parseIdentifiers(text: string): string[] {
-  return mergeUnique(text.split(/[\s,;]+/g).map((item) => item.trim()));
+  if (typeof text !== 'string') return [];
+  return mergeUnique(text.split(/[\s,;]+/g).map((item) => (typeof item === 'string' ? item.trim() : '')));
 }
 
 function splitSimpleCsvLine(line: string): string[] {
@@ -438,7 +509,7 @@ function App() {
 
     const counts: Record<string, number> = {};
     for (const d of devices) {
-      const rawBrand = (d.manufacturer || '').trim();
+      const rawBrand = (typeof d.manufacturer === 'string' ? d.manufacturer : String(d.manufacturer || '')).trim();
       const brand =
         rawBrand && rawBrand !== 'N/A' && rawBrand.toLowerCase() !== 'unknown'
           ? rawBrand
@@ -523,10 +594,10 @@ function App() {
     return devices.filter((device) => {
       const formattedDate = formatDate(device.createdAt).toLowerCase();
       const haystack = [
-        device.serialOrImei,
-        device.model,
-        device.manufacturer,
-        device.createdAt || '',
+        device.serialOrImei || '',
+        device.model || '',
+        device.manufacturer || '',
+        device.createdAt ? String(device.createdAt) : '',
         formattedDate,
       ]
         .join(' ')
@@ -542,8 +613,8 @@ function App() {
     }
 
     return [...filteredDevices].sort((a, b) => {
-      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const timeA = parseDateTimestamp(a.createdAt);
+      const timeB = parseDateTimestamp(b.createdAt);
       if (dateSortOrder === 'desc') {
         return timeB - timeA;
       }
