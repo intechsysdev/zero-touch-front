@@ -968,3 +968,105 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   Error Boundary / Pantalla de Rescate
+   ========================================================================== */
+
+.error-boundary-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  padding: 24px 16px;
+  width: 100%;
+}
+
+.error-boundary-card {
+  max-width: 680px;
+  width: 100%;
+  margin: 0 auto;
+  border-left: 4px solid var(--brand-vivid);
+  box-shadow: var(--shadow);
+}
+
+.error-boundary-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.error-boundary-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.error-boundary-header h2 {
+  margin: 0 0 6px 0;
+  font-size: 1.25rem;
+  color: var(--ink);
+}
+
+.error-boundary-desc {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.error-boundary-banner {
+  margin-bottom: 20px;
+  word-break: break-word;
+}
+
+.error-boundary-details {
+  margin-bottom: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+}
+
+.error-boundary-details summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  outline: none;
+}
+
+.error-boundary-details summary:hover {
+  color: var(--ink);
+}
+
+.error-boundary-details pre {
+  margin-top: 10px;
+  margin-bottom: 0;
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  overflow-x: auto;
+  color: var(--ink);
+  background: var(--card);
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.error-boundary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+

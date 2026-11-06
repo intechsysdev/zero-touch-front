@@ -4,6 +4,7 @@ import BarcodeScannerComponent from 'react-qr-barcode-scanner';
 import { acabaDeSalir, BACKEND_BASE_URL, cerrarSesionOne, iniciarSSO, marcarSalida, procesarCallbackSSO } from './sso';
 import { SelectorTema } from './componentes/SelectorTema';
 import { MarcaCompacta, LogoEntrada } from './componentes/Marca';
+import { ErrorBoundary } from './componentes/ErrorBoundary';
 
 type AuthSession = {
   accessToken: string;
@@ -220,8 +221,15 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
   }
 
   if (!response.ok) {
-    const payloadObj = payload as Record<string, any>;
-    let message = payloadObj?.message || payloadObj?.detail;
+    const payloadObj = (payload && typeof payload === 'object') ? (payload as Record<string, any>) : {};
+    let message =
+      (typeof payloadObj.message === 'string' && payloadObj.message) ||
+      (typeof payloadObj.detail === 'string' && payloadObj.detail) ||
+      (typeof payloadObj.error === 'string' && payloadObj.error) ||
+      (typeof payloadObj.details === 'string' && payloadObj.details) ||
+      (typeof payloadObj.details?.message === 'string' && payloadObj.details.message) ||
+      (typeof payloadObj.error?.message === 'string' && payloadObj.error.message) ||
+      '';
 
     if (Array.isArray(payloadObj?.errors) && payloadObj.errors.length > 0) {
       const items = payloadObj.errors.map((e: any) => {
@@ -758,6 +766,17 @@ function App() {
     return isSamsungMode ? '/samsung/devices/unclaim' : '/zerotouch/devices/unclaim';
   }
 
+  function switchEnrollmentPlatform(platform: 'zerotouch' | 'samsung') {
+    if (platform === enrollmentPlatform) return;
+    setErrorText('');
+    setSuccessText('');
+    setDeviceSearch('');
+    setDevicePage(1);
+    setHoveredBrand(null);
+    setDevices([]);
+    setEnrollmentPlatform(platform);
+  }
+
   async function loadIdentifierOptions(forceSync: boolean) {
     if (!session) {
       return;
@@ -794,8 +813,9 @@ function App() {
     try {
       let queryParamStr = '';
       if (isSamsungMode) {
-        if (session.samsungCustomerId) {
-          queryParamStr = `?customerId=${encodeURIComponent(session.samsungCustomerId)}`;
+        const targetCustomerId = session.samsungCustomerId || session.clientId;
+        if (targetCustomerId) {
+          queryParamStr = `?customerId=${encodeURIComponent(targetCustomerId)}`;
         }
       } else {
         const params = new URLSearchParams();
@@ -833,6 +853,7 @@ function App() {
       const list = Array.isArray(data.devices) ? data.devices : [];
       setDevices(list.map((d) => mapDevice(d, isSamsungMode)));
     } catch (error) {
+      setDevices([]);
       setErrorText(getErrorMessage(error));
     } finally {
       setIsBusy(false);
@@ -1228,7 +1249,10 @@ function App() {
           </p>
         </section>
       ) : (
-        <>
+        <ErrorBoundary
+          fallbackTitle="Se produjo un error al cargar la vista de enrolamiento"
+          onReset={() => switchEnrollmentPlatform('zerotouch')}
+        >
           <section className="panel info-panel">
             {session.availableTenants && session.availableTenants.length > 1 ? (
               <div>
@@ -1285,14 +1309,14 @@ function App() {
               <button
                 className={enrollmentPlatform === 'zerotouch' ? 'tab-btn active' : 'tab-btn'}
                 type="button"
-                onClick={() => setEnrollmentPlatform('zerotouch')}
+                onClick={() => switchEnrollmentPlatform('zerotouch')}
               >
                 Zero-touch
               </button>
               <button
                 className={enrollmentPlatform === 'samsung' ? 'tab-btn active' : 'tab-btn'}
                 type="button"
-                onClick={() => setEnrollmentPlatform('samsung')}
+                onClick={() => switchEnrollmentPlatform('samsung')}
               >
                 Samsung Knox
               </button>
@@ -1536,9 +1560,9 @@ function App() {
                           {hoveredBrandItem.percentage}%
                         </text>
                         <text x="100" y="104" textAnchor="middle" className="pie-center-name">
-                          {hoveredBrandItem.name.length > 14
-                            ? hoveredBrandItem.name.slice(0, 12) + '…'
-                            : hoveredBrandItem.name}
+                          {(hoveredBrandItem.name || '').length > 14
+                            ? (hoveredBrandItem.name || '').slice(0, 12) + '…'
+                            : hoveredBrandItem.name || ''}
                         </text>
                         <text x="100" y="120" textAnchor="middle" className="pie-center-sub">
                           {hoveredBrandItem.count} {hoveredBrandItem.count === 1 ? 'dispositivo' : 'dispositivos'}
@@ -1732,7 +1756,7 @@ function App() {
               </table>
             </div>
           </section>
-        </>
+        </ErrorBoundary>
       )}
     </main>
   );
