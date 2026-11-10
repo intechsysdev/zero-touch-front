@@ -328,51 +328,86 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
   return payload as T;
 }
 
+function cleanImei(val: unknown): string {
+  if (val === null || val === undefined) return '';
+  const cleaned = String(val).trim().replace(/[\s-]/g, '');
+  return /^\d{14,16}$/.test(cleaned) ? cleaned : '';
+}
+
 function extractImei(raw: Record<string, any>): string {
+  if (!raw || typeof raw !== 'object') return '';
+
   const identifier = (raw.deviceIdentifier || {}) as Record<string, any>;
   const rawSamsung = (raw.rawSamsungPayload || {}) as Record<string, any>;
 
-  const explicit =
-    raw.imei ||
-    identifier.imei ||
-    rawSamsung.imei ||
-    rawSamsung.meidImei ||
-    raw.meidImei;
-
-  if (explicit && String(explicit).trim()) {
-    const clean = String(explicit).trim();
-    if (clean !== 'N/A' && clean !== 'undefined') {
-      return clean;
-    }
-  }
-
-  const candidates = [
+  // 1. Check known explicit IMEI properties first
+  const explicitCandidates = [
     raw.imei,
-    identifier.imei,
     rawSamsung.imei,
     rawSamsung.meidImei,
-    raw.deviceId,
-    raw.serialNumber,
-    rawSamsung.serialNumber,
-    rawSamsung.deviceId,
-    raw.name,
-    rawSamsung.name,
+    rawSamsung.imei1,
+    rawSamsung.imei2,
+    rawSamsung.primaryImei,
+    rawSamsung.deviceImei,
+    raw.meidImei,
+    raw.deviceImei,
+    identifier.imei,
+    identifier.meidImei,
+    rawSamsung.deviceData?.imei,
+    rawSamsung.deviceData?.meidImei,
+    rawSamsung.deviceIdentifier?.imei,
   ];
 
-  for (const cand of candidates) {
-    if (!cand) continue;
-    const str = String(cand).trim();
-    if (/^\d{14,16}$/.test(str)) {
-      return str;
+  for (const cand of explicitCandidates) {
+    const cleaned = cleanImei(cand);
+    if (cleaned) {
+      return cleaned;
     }
   }
 
-  for (const cand of candidates) {
-    if (!cand) continue;
-    const str = String(cand).trim();
-    const match = str.match(/\b\d{14,16}\b/);
-    if (match) {
-      return match[0];
+  // 2. Deep search any property in rawSamsung where the key includes 'imei' or 'meid'
+  if (rawSamsung && typeof rawSamsung === 'object') {
+    for (const [key, val] of Object.entries(rawSamsung)) {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey.includes('imei') || lowerKey.includes('meid')) {
+        const cleaned = cleanImei(val);
+        if (cleaned) {
+          return cleaned;
+        }
+      }
+    }
+
+    // 3. Search other properties in rawSamsung (avoiding date/timestamp fields)
+    for (const [key, val] of Object.entries(rawSamsung)) {
+      const lowerKey = key.toLowerCase();
+      if (
+        lowerKey.includes('date') ||
+        lowerKey.includes('time') ||
+        lowerKey.includes('created') ||
+        lowerKey.includes('upload') ||
+        lowerKey.includes('modified') ||
+        lowerKey.includes('timestamp') ||
+        lowerKey.includes('seconds')
+      ) {
+        continue;
+      }
+      const cleaned = cleanImei(val);
+      if (cleaned) {
+        return cleaned;
+      }
+    }
+  }
+
+  // 4. Fallback search on raw object
+  const fallbackCandidates = [
+    raw.deviceId,
+    identifier.serialNumber,
+    raw.serialNumber,
+  ];
+  for (const cand of fallbackCandidates) {
+    const cleaned = cleanImei(cand);
+    if (cleaned) {
+      return cleaned;
     }
   }
 
@@ -391,14 +426,19 @@ function mapDevice(raw: RawDevice, isSamsung = false): ManagedDevice {
     identifier.serialNumber ||
     rawSamsung.serialNumber ||
     rawSamsung.sn ||
+    rawSamsung.serial ||
+    (isSamsung ? rawSamsung.deviceId || raw.deviceId : '') ||
     ''
   ).trim();
 
-  const serialNumber = rawSerial && rawSerial !== resolvedImei ? rawSerial : undefined;
+  const serialNumber =
+    rawSerial && rawSerial !== resolvedImei && rawSerial !== 'N/A' && rawSerial !== 'undefined'
+      ? rawSerial
+      : undefined;
 
   const primaryIdentifier = isSamsung
-    ? resolvedImei || rawSerial || raw.deviceId || raw.name || 'N/A'
-    : rawSerial || identifier.serialNumber || resolvedImei || raw.deviceId || raw.name || 'N/A';
+    ? resolvedImei || serialNumber || String(raw.deviceId || raw.name || 'N/A')
+    : serialNumber || identifier.serialNumber || resolvedImei || String(raw.deviceId || raw.name || 'N/A');
 
   const rawModelName = String(
     raw.model ||
@@ -1917,7 +1957,7 @@ function App() {
                         {isSamsungMode ? (
                           <>
                             <td style={{ fontFamily: 'var(--font-mono)' }}>
-                              {device.imei || device.serialOrImei}
+                              {device.imei || '-'}
                             </td>
                             <td>
                               <strong>{getSamsungFamily(device.model)}</strong>
