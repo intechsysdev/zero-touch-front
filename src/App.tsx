@@ -328,17 +328,63 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
   return payload as T;
 }
 
-function mapDevice(raw: RawDevice, isSamsung = false): ManagedDevice {
-  const identifier = raw.deviceIdentifier || {};
-  const rawSamsung = (raw as Record<string, any>).rawSamsungPayload || {};
+function extractImei(raw: Record<string, any>): string {
+  const identifier = (raw.deviceIdentifier || {}) as Record<string, any>;
+  const rawSamsung = (raw.rawSamsungPayload || {}) as Record<string, any>;
 
-  const rawImei = String(
+  const explicit =
     raw.imei ||
     identifier.imei ||
-    rawSamsung.meidImei ||
     rawSamsung.imei ||
-    ''
-  ).trim();
+    rawSamsung.meidImei ||
+    raw.meidImei;
+
+  if (explicit && String(explicit).trim()) {
+    const clean = String(explicit).trim();
+    if (clean !== 'N/A' && clean !== 'undefined') {
+      return clean;
+    }
+  }
+
+  const candidates = [
+    raw.imei,
+    identifier.imei,
+    rawSamsung.imei,
+    rawSamsung.meidImei,
+    raw.deviceId,
+    raw.serialNumber,
+    rawSamsung.serialNumber,
+    rawSamsung.deviceId,
+    raw.name,
+    rawSamsung.name,
+  ];
+
+  for (const cand of candidates) {
+    if (!cand) continue;
+    const str = String(cand).trim();
+    if (/^\d{14,16}$/.test(str)) {
+      return str;
+    }
+  }
+
+  for (const cand of candidates) {
+    if (!cand) continue;
+    const str = String(cand).trim();
+    const match = str.match(/\b\d{14,16}\b/);
+    if (match) {
+      return match[0];
+    }
+  }
+
+  return '';
+}
+
+function mapDevice(raw: RawDevice, isSamsung = false): ManagedDevice {
+  const rawObj = raw as Record<string, any>;
+  const identifier = raw.deviceIdentifier || {};
+  const rawSamsung = rawObj.rawSamsungPayload || {};
+
+  const resolvedImei = extractImei(rawObj);
 
   const rawSerial = String(
     raw.serialNumber ||
@@ -348,9 +394,11 @@ function mapDevice(raw: RawDevice, isSamsung = false): ManagedDevice {
     ''
   ).trim();
 
+  const serialNumber = rawSerial && rawSerial !== resolvedImei ? rawSerial : undefined;
+
   const primaryIdentifier = isSamsung
-    ? rawImei || rawSerial || raw.deviceId || raw.name || 'N/A'
-    : rawSerial || identifier.serialNumber || rawImei || raw.deviceId || raw.name || 'N/A';
+    ? resolvedImei || rawSerial || raw.deviceId || raw.name || 'N/A'
+    : rawSerial || identifier.serialNumber || resolvedImei || raw.deviceId || raw.name || 'N/A';
 
   const rawModelName = String(
     raw.model ||
@@ -393,8 +441,8 @@ function mapDevice(raw: RawDevice, isSamsung = false): ManagedDevice {
     serialOrImei: primaryIdentifier,
     model,
     manufacturer: isSamsung ? 'Samsung' : (rawManufacturer || 'N/A'),
-    imei: rawImei || undefined,
-    serialNumber: rawSerial || undefined,
+    imei: resolvedImei || undefined,
+    serialNumber,
     createdAt,
   };
 }
@@ -1746,7 +1794,7 @@ function App() {
             <h2>Dispositivos ({sortedDevices.length}/{devices.length})</h2>
             <label>
               {isSamsungMode
-                ? 'Buscar por IMEI, Número de Serie, Modelo o Fecha de adición'
+                ? 'Buscar por IMEI, Nombre de Dispositivo, Modelo o Fecha de adición'
                 : 'Buscar por Identificador, Modelo, Fabricante o Fecha de adición'}
               <div className="search-input-wrap">
                 <input
@@ -1754,7 +1802,7 @@ function App() {
                   onChange={(event) => setDeviceSearch(event.target.value)}
                   placeholder={
                     isSamsungMode
-                      ? 'Ej: 352093081234567, Galaxy A14, SM-A135, 2026-10'
+                      ? 'Ej: 352093081234567, Galaxy Serie A, SM-A145, 2026-10'
                       : 'Ej: 50057711500955, Dispositivo, Samsung, 2026-10'
                   }
                 />
@@ -1824,9 +1872,20 @@ function App() {
               <table>
                 <thead>
                   <tr>
-                    <th>{isSamsungMode ? 'IMEI' : 'Identificador'}</th>
-                    <th>{isSamsungMode ? 'Número de Serie' : 'Modelo'}</th>
-                    <th>{isSamsungMode ? 'Modelo' : 'Fabricante'}</th>
+                    {isSamsungMode ? (
+                      <>
+                        <th>IMEI</th>
+                        <th>Nombre Dispositivo</th>
+                        <th>Modelo</th>
+                        <th>Número de Serie</th>
+                      </>
+                    ) : (
+                      <>
+                        <th>Identificador</th>
+                        <th>Modelo</th>
+                        <th>Fabricante</th>
+                      </>
+                    )}
                     <th
                       className="sortable-th"
                       onClick={() => {
@@ -1846,7 +1905,7 @@ function App() {
                 <tbody>
                   {pagedDevices.length === 0 ? (
                     <tr>
-                      <td colSpan={5}>
+                      <td colSpan={isSamsungMode ? 6 : 5}>
                         {devices.length === 0
                           ? 'Sin dispositivos.'
                           : 'No hay coincidencias para la busqueda.'}
@@ -1855,25 +1914,32 @@ function App() {
                   ) : (
                     pagedDevices.map((device) => (
                       <tr key={device.id}>
-                        <td style={{ fontFamily: 'var(--font-mono)' }}>
-                          {isSamsungMode ? (device.imei || device.serialOrImei) : device.serialOrImei}
-                        </td>
-                        <td>
-                          {isSamsungMode ? (
-                            <span style={{ fontFamily: 'var(--font-mono)' }}>
-                              {device.serialNumber || '-'}
-                            </span>
-                          ) : (
-                            device.model
-                          )}
-                        </td>
-                        <td>
-                          {isSamsungMode ? (
-                            <strong>{device.model}</strong>
-                          ) : (
-                            device.manufacturer
-                          )}
-                        </td>
+                        {isSamsungMode ? (
+                          <>
+                            <td style={{ fontFamily: 'var(--font-mono)' }}>
+                              {device.imei || device.serialOrImei}
+                            </td>
+                            <td>
+                              <strong>{getSamsungFamily(device.model)}</strong>
+                            </td>
+                            <td>
+                              <span style={{ fontFamily: 'var(--font-mono)' }}>
+                                {device.model}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ fontFamily: 'var(--font-mono)' }}>
+                                {device.serialNumber || '-'}
+                              </span>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td>{device.serialOrImei}</td>
+                            <td>{device.model}</td>
+                            <td>{device.manufacturer}</td>
+                          </>
+                        )}
                         <td>{formatDate(device.createdAt)}</td>
                         <td>
                           <button
