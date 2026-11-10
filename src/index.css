@@ -1070,3 +1070,16 @@ tbody tr:hover {
   align-items: center;
 }
 
+.model-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-subcode {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+

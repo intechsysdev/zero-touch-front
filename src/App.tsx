@@ -5,6 +5,7 @@ import { acabaDeSalir, BACKEND_BASE_URL, cerrarSesionOne, iniciarSSO, marcarSali
 import { SelectorTema } from './componentes/SelectorTema';
 import { MarcaCompacta, LogoEntrada } from './componentes/Marca';
 import { ErrorBoundary } from './componentes/ErrorBoundary';
+import { getSamsungFamily } from './samsungModels';
 
 type AuthSession = {
   accessToken: string;
@@ -329,29 +330,50 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
 
 function mapDevice(raw: RawDevice, isSamsung = false): ManagedDevice {
   const identifier = raw.deviceIdentifier || {};
-  const serialOrImei = String(
-    raw.serialNumber ||
-    identifier.serialNumber ||
+  const rawSamsung = (raw as Record<string, any>).rawSamsungPayload || {};
+
+  const rawImei = String(
     raw.imei ||
     identifier.imei ||
-    raw.deviceId ||
-    raw.name ||
-    'N/A'
-  );
+    rawSamsung.meidImei ||
+    rawSamsung.imei ||
+    ''
+  ).trim();
 
-  const rawModel =
+  const rawSerial = String(
+    raw.serialNumber ||
+    identifier.serialNumber ||
+    rawSamsung.serialNumber ||
+    rawSamsung.sn ||
+    ''
+  ).trim();
+
+  const primaryIdentifier = isSamsung
+    ? rawImei || rawSerial || raw.deviceId || raw.name || 'N/A'
+    : rawSerial || identifier.serialNumber || rawImei || raw.deviceId || raw.name || 'N/A';
+
+  const rawModelName = String(
     raw.model ||
     identifier.model ||
     raw.modelName ||
+    rawSamsung.modelName ||
+    rawSamsung.model ||
     raw.modelNumber ||
-    raw.deviceModel;
+    raw.deviceModel ||
+    ''
+  ).trim();
 
-  const rawManufacturer =
+  const model = isSamsung
+    ? (rawModelName && rawModelName !== 'Samsung Device' && rawModelName !== 'Dispositivo' ? rawModelName : 'Samsung')
+    : (rawModelName || 'Dispositivo');
+
+  const rawManufacturer = String(
     raw.manufacturer ||
     identifier.manufacturer ||
     raw.brand ||
     raw.make ||
-    (isSamsung || raw.modelName?.toUpperCase().startsWith('SM-') ? 'Samsung' : undefined);
+    (isSamsung || rawModelName?.toUpperCase().startsWith('SM-') ? 'Samsung' : 'N/A')
+  ).trim();
 
   const createdAt =
     raw.claims?.[0]?.createTime ??
@@ -361,15 +383,18 @@ function mapDevice(raw: RawDevice, isSamsung = false): ManagedDevice {
     raw.uploadDate ??
     raw.createdDate ??
     raw.registeredDate ??
-    raw.transactionDate;
+    raw.transactionDate ??
+    rawSamsung.uploadDate ??
+    rawSamsung.createTime ??
+    rawSamsung.createdAt;
 
   return {
-    id: String(raw.deviceId || raw.name || serialOrImei),
-    serialOrImei,
-    model: String(rawModel || (isSamsung ? 'Samsung Device' : 'Dispositivo')),
-    manufacturer: String(rawManufacturer || (isSamsung ? 'Samsung' : 'N/A')),
-    imei: raw.imei || identifier.imei ? String(raw.imei || identifier.imei) : undefined,
-    serialNumber: raw.serialNumber || identifier.serialNumber ? String(raw.serialNumber || identifier.serialNumber) : undefined,
+    id: String(raw.deviceId || raw.name || primaryIdentifier),
+    serialOrImei: primaryIdentifier,
+    model,
+    manufacturer: isSamsung ? 'Samsung' : (rawManufacturer || 'N/A'),
+    imei: rawImei || undefined,
+    serialNumber: rawSerial || undefined,
     createdAt,
   };
 }
@@ -509,14 +534,18 @@ function App() {
 
     const counts: Record<string, number> = {};
     for (const d of devices) {
-      const rawBrand = (typeof d.manufacturer === 'string' ? d.manufacturer : String(d.manufacturer || '')).trim();
-      const brand =
-        rawBrand && rawBrand !== 'N/A' && rawBrand.toLowerCase() !== 'unknown'
-          ? rawBrand
-          : isSamsungMode
-            ? 'Samsung'
+      let groupKey = '';
+      if (isSamsungMode) {
+        // Opción B: Clasificación dinámica por Familia Samsung (Serie A, Serie S, Note, Tab, etc.)
+        groupKey = getSamsungFamily(d.model);
+      } else {
+        const rawBrand = (typeof d.manufacturer === 'string' ? d.manufacturer : String(d.manufacturer || '')).trim();
+        groupKey =
+          rawBrand && rawBrand !== 'N/A' && rawBrand.toLowerCase() !== 'unknown'
+            ? rawBrand
             : 'Sin especificar';
-      counts[brand] = (counts[brand] || 0) + 1;
+      }
+      counts[groupKey] = (counts[groupKey] || 0) + 1;
     }
 
     const total = devices.length;
@@ -593,9 +622,13 @@ function App() {
 
     return devices.filter((device) => {
       const formattedDate = formatDate(device.createdAt).toLowerCase();
+      const family = isSamsungMode ? getSamsungFamily(device.model).toLowerCase() : '';
       const haystack = [
         device.serialOrImei || '',
+        device.imei || '',
+        device.serialNumber || '',
         device.model || '',
+        family,
         device.manufacturer || '',
         device.createdAt ? String(device.createdAt) : '',
         formattedDate,
@@ -605,7 +638,7 @@ function App() {
 
       return haystack.includes(query);
     });
-  }, [deviceSearch, devices]);
+  }, [deviceSearch, devices, isSamsungMode]);
 
   const sortedDevices = useMemo(() => {
     if (dateSortOrder === 'none') {
@@ -1178,8 +1211,11 @@ function App() {
       return;
     }
 
+    const idLabel = isSamsungMode
+      ? (device.imei || device.serialOrImei)
+      : device.serialOrImei;
     const confirmed = window.confirm(
-      `Vas a eliminar el dispositivo ${device.serialOrImei}. Deseas continuar?`
+      `¿Vas a eliminar el dispositivo ${idLabel}? ¿Deseas continuar?`
     );
     if (!confirmed) {
       return;
@@ -1539,7 +1575,7 @@ function App() {
           <section className="panel chart-panel">
             <div className="chart-panel-header">
               <div>
-                <h2>Distribución por Marca</h2>
+                <h2>{isSamsungMode ? 'Distribución por Familia' : 'Distribución por Marca'}</h2>
                 <p className="hint">
                   {devices.length === 0
                     ? 'No hay dispositivos registrados en esta plataforma.'
@@ -1559,7 +1595,11 @@ function App() {
 
             {devices.length === 0 ? (
               <div className="chart-empty-state">
-                <p>Sin dispositivos registrados para generar el diagrama de pastel.</p>
+                <p>
+                  {isSamsungMode
+                    ? 'Sin dispositivos registrados para generar el diagrama por familia.'
+                    : 'Sin dispositivos registrados para generar el diagrama de pastel.'}
+                </p>
               </div>
             ) : (
               <div className="chart-content">
@@ -1568,7 +1608,7 @@ function App() {
                     viewBox="0 0 200 200"
                     className="pie-chart-svg"
                     role="img"
-                    aria-label="Diagrama de pastel de dispositivos por marca"
+                    aria-label={isSamsungMode ? 'Diagrama de pastel de dispositivos por familia' : 'Diagrama de pastel de dispositivos por marca'}
                   >
                     {brandStats.items.length === 1 ? (
                       <circle
@@ -1648,7 +1688,10 @@ function App() {
                           {brandStats.total === 1 ? 'Dispositivo' : 'Dispositivos'}
                         </text>
                         <text x="100" y="120" textAnchor="middle" className="pie-center-sub">
-                          {brandStats.items.length} {brandStats.items.length === 1 ? 'marca' : 'marcas'}
+                          {brandStats.items.length}{' '}
+                          {brandStats.items.length === 1
+                            ? (isSamsungMode ? 'familia' : 'marca')
+                            : (isSamsungMode ? 'familias' : 'marcas')}
                         </text>
                       </g>
                     )}
@@ -1702,12 +1745,18 @@ function App() {
           <section className="panel">
             <h2>Dispositivos ({sortedDevices.length}/{devices.length})</h2>
             <label>
-              Buscar por Identificador, Modelo, Fabricante o Fecha de adición
+              {isSamsungMode
+                ? 'Buscar por IMEI, Número de Serie, Modelo o Fecha de adición'
+                : 'Buscar por Identificador, Modelo, Fabricante o Fecha de adición'}
               <div className="search-input-wrap">
                 <input
                   value={deviceSearch}
                   onChange={(event) => setDeviceSearch(event.target.value)}
-                  placeholder="Ej: 50057711500955, Dispositivo, Samsung, 2026-10"
+                  placeholder={
+                    isSamsungMode
+                      ? 'Ej: 352093081234567, Galaxy A14, SM-A135, 2026-10'
+                      : 'Ej: 50057711500955, Dispositivo, Samsung, 2026-10'
+                  }
                 />
                 {deviceSearch.trim() ? (
                   <button
@@ -1775,9 +1824,9 @@ function App() {
               <table>
                 <thead>
                   <tr>
-                    <th>Identificador</th>
-                    <th>Modelo</th>
-                    <th>Fabricante</th>
+                    <th>{isSamsungMode ? 'IMEI' : 'Identificador'}</th>
+                    <th>{isSamsungMode ? 'Número de Serie' : 'Modelo'}</th>
+                    <th>{isSamsungMode ? 'Modelo' : 'Fabricante'}</th>
                     <th
                       className="sortable-th"
                       onClick={() => {
@@ -1806,9 +1855,25 @@ function App() {
                   ) : (
                     pagedDevices.map((device) => (
                       <tr key={device.id}>
-                        <td>{device.serialOrImei}</td>
-                        <td>{device.model}</td>
-                        <td>{device.manufacturer}</td>
+                        <td style={{ fontFamily: 'var(--font-mono)' }}>
+                          {isSamsungMode ? (device.imei || device.serialOrImei) : device.serialOrImei}
+                        </td>
+                        <td>
+                          {isSamsungMode ? (
+                            <span style={{ fontFamily: 'var(--font-mono)' }}>
+                              {device.serialNumber || '-'}
+                            </span>
+                          ) : (
+                            device.model
+                          )}
+                        </td>
+                        <td>
+                          {isSamsungMode ? (
+                            <strong>{device.model}</strong>
+                          ) : (
+                            device.manufacturer
+                          )}
+                        </td>
                         <td>{formatDate(device.createdAt)}</td>
                         <td>
                           <button
