@@ -1348,11 +1348,10 @@ function App() {
             <MarcaCompacta />
             <div className="marca-texto">
               <span className="marca-nombre">Zero-touch</span>
-              <span className="rotulo">{session.companyName || 'Consola Web'}</span>
+              {!session.availableTenants || session.availableTenants.length <= 1 ? (
+                <span className="rotulo">{session.companyName || 'Consola Web'}</span>
+              ) : null}
             </div>
-          </div>
-
-          <div className="barra-derecha">
             {session.availableTenants && session.availableTenants.length > 1 ? (
               <select
                 className="selector-empresa"
@@ -1374,12 +1373,10 @@ function App() {
                 ))}
               </select>
             ) : null}
+          </div>
 
+          <div className="barra-derecha">
             <SelectorTema />
-
-            <span className="correo" title={`Cliente: ${session.companyName}`}>
-              {session.companyName}
-            </span>
 
             <button className="boton-salir" onClick={handleLogout} type="button" title="Cerrar sesión">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1449,41 +1446,6 @@ function App() {
           onReset={() => switchEnrollmentPlatform('zerotouch')}
         >
           <section className="panel info-panel">
-            {session.availableTenants && session.availableTenants.length > 1 ? (
-              <div>
-                <p className="label">Empresa Activa</p>
-                <select
-                  value={session.oneTenantId || ''}
-                  style={{
-                    padding: '0.4rem 0.6rem',
-                    borderRadius: '6px',
-                    border: '1px solid var(--line)',
-                    background: 'var(--card)',
-                    color: 'var(--ink)',
-                    fontWeight: 600,
-                  }}
-                  onChange={(e) => {
-                    const selected = session.availableTenants?.find(
-                      (t) => t.oneTenantId === e.target.value
-                    );
-                    if (selected) {
-                      void cargarSesion(session.accessToken, selected.oneTenantId, session.refreshToken);
-                    }
-                  }}
-                >
-                  {session.availableTenants.map((t) => (
-                    <option key={t.oneTenantId} value={t.oneTenantId}>
-                      {t.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div>
-                <p className="label">Empresa</p>
-                <strong>{session.companyName}</strong>
-              </div>
-            )}
             <div>
               <p className="label">Client ID</p>
               <strong>{session.clientId}</strong>
