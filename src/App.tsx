@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import BarcodeScannerComponent from 'react-qr-barcode-scanner';
+import { ChartPie, List, ShieldCheck, Smartphone, Upload } from 'lucide-react';
 import { acabaDeSalir, BACKEND_BASE_URL, cerrarSesionOne, iniciarSSO, marcarSalida, procesarCallbackSSO } from './sso';
 import { SelectorTema } from './componentes/SelectorTema';
-import { MarcaCompacta, LogoEntrada } from './componentes/Marca';
+import { LogoEntrada } from './componentes/Marca';
+import { MenuLateral } from './componentes/MenuLateral';
+import type { GrupoMenu } from './componentes/MenuLateral';
 import { ErrorBoundary } from './componentes/ErrorBoundary';
 import { getSamsungFamily } from './samsungModels';
 
@@ -13,6 +16,9 @@ type AuthSession = {
   companyName: string;
   clientId: string;
   oneTenantId?: string;
+  /** Quién entró, para el pie del menú. Las sesiones guardadas antes de esto no lo traen. */
+  userEmail?: string;
+  userName?: string;
   availableTenants?: Array<{
     id?: number;
     clientId: string;
@@ -827,6 +833,8 @@ function App() {
       companyName: active.companyName || active.nombre || 'Intechsys',
       clientId: active.clientId || '',
       oneTenantId: active.oneTenantId || tenantId || undefined,
+      userEmail: data.usuario?.email || undefined,
+      userName: data.usuario?.nombre || undefined,
       availableTenants: (data.empresas || []).map((e) => ({
         id: e.id || undefined,
         clientId: e.clientId || e.slug || 'cliente',
@@ -1340,64 +1348,23 @@ function App() {
     }
   }
 
-  return (
-    <main className={`app-shell ${isSamsungMode ? 'samsung-mode' : ''}`}>
-      {session ? (
-        <header className="barra">
-          <div className="marca">
-            <MarcaCompacta />
-            <div className="marca-texto">
-              <span className="marca-nombre">Zero-touch</span>
-              {!session.availableTenants || session.availableTenants.length <= 1 ? (
-                <span className="rotulo">{session.companyName || 'Consola Web'}</span>
-              ) : null}
-            </div>
-            {session.availableTenants && session.availableTenants.length > 1 ? (
-              <select
-                className="selector-empresa"
-                aria-label="Empresa activa"
-                value={session.oneTenantId || ''}
-                onChange={(e) => {
-                  const selected = session.availableTenants?.find(
-                    (t) => t.oneTenantId === e.target.value
-                  );
-                  if (selected) {
-                    void cargarSesion(session.accessToken, selected.oneTenantId, session.refreshToken);
-                  }
-                }}
-              >
-                {session.availableTenants.map((t) => (
-                  <option key={t.oneTenantId} value={t.oneTenantId}>
-                    {t.nombre}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-          </div>
+  const avisos = (
+    <>
+      {errorText ? <div className="error-banner">{errorText}</div> : null}
+      {successText ? <div className="success-banner">{successText}</div> : null}
+    </>
+  );
 
-          <div className="barra-derecha">
-            <SelectorTema />
-
-            <button className="boton-salir" onClick={handleLogout} type="button" title="Cerrar sesión">
-              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-              <span>Salir</span>
-            </button>
-          </div>
-        </header>
-      ) : (
+  // Sin sesión: la pantalla de ingreso por Client ID, sin menú.
+  if (!session) {
+    return (
+      <main className={`app-shell ${isSamsungMode ? 'samsung-mode' : ''}`}>
         <header className="barra-ingreso">
           <SelectorTema />
         </header>
-      )}
 
-      {errorText ? <div className="error-banner">{errorText}</div> : null}
-      {successText ? <div className="success-banner">{successText}</div> : null}
+        {avisos}
 
-      {!session ? (
         <section className="panel login-panel">
           <div className="marca-entrada">
             <LogoEntrada />
@@ -1440,8 +1407,82 @@ function App() {
             </button>
           </p>
         </section>
-      ) : (
+      </main>
+    );
+  }
+
+  const variasEmpresas = Boolean(session.availableTenants && session.availableTenants.length > 1);
+
+  // La plataforma de enrolamiento se elige en el menú; lo demás son anclas a esta misma página.
+  const gruposMenu: GrupoMenu[] = [
+    {
+      titulo: 'Plataforma',
+      entradas: [
+        {
+          nombre: 'Zero-touch',
+          Icono: Smartphone,
+          activa: enrollmentPlatform === 'zerotouch',
+          onElegir: () => switchEnrollmentPlatform('zerotouch'),
+        },
+        {
+          nombre: 'Samsung Knox',
+          Icono: ShieldCheck,
+          activa: enrollmentPlatform === 'samsung',
+          onElegir: () => switchEnrollmentPlatform('samsung'),
+        },
+      ],
+    },
+    {
+      titulo: 'En esta página',
+      entradas: [
+        { nombre: 'Carga masiva', Icono: Upload, href: '#carga-masiva' },
+        { nombre: 'Distribución', Icono: ChartPie, href: '#distribucion' },
+        { nombre: 'Dispositivos', Icono: List, href: '#dispositivos' },
+      ],
+    },
+  ];
+
+  return (
+    <div className={`app-shell con-menu ${isSamsungMode ? 'samsung-mode' : ''}`}>
+      <MenuLateral
+        producto="Zero-touch"
+        // Con varias empresas el selector ya dice cuál está abierta: el nombre no se repite.
+        empresa={variasEmpresas ? undefined : session.companyName || 'Consola Web'}
+        selectorEmpresa={
+          variasEmpresas ? (
+            <select
+              className="selector-empresa"
+              aria-label="Empresa activa"
+              value={session.oneTenantId || ''}
+              onChange={(e) => {
+                const selected = session.availableTenants?.find(
+                  (t) => t.oneTenantId === e.target.value
+                );
+                if (selected) {
+                  void cargarSesion(session.accessToken, selected.oneTenantId, session.refreshToken);
+                }
+              }}
+            >
+              {session.availableTenants?.map((t) => (
+                <option key={t.oneTenantId} value={t.oneTenantId}>
+                  {t.nombre}
+                </option>
+              ))}
+            </select>
+          ) : null
+        }
+        grupos={gruposMenu}
+        usuario={session.userEmail || session.userName}
+        onSalir={handleLogout}
+      />
+
+      <main id="contenido" className="contenido">
+        {avisos}
+
+        {/* El cambio de plataforma está en el menú, fuera de esta frontera: con la key, elegir otra
+            plataforma también saca a la vista de la pantalla de error. */}
         <ErrorBoundary
+          key={enrollmentPlatform}
           fallbackTitle="Se produjo un error al cargar la vista de enrolamiento"
           onReset={() => switchEnrollmentPlatform('zerotouch')}
         >
@@ -1460,27 +1501,7 @@ function App() {
             </button>
           </section>
 
-          <section className="panel">
-            <h2>Plataforma de Enrolamiento</h2>
-            <div className="segmented">
-              <button
-                className={enrollmentPlatform === 'zerotouch' ? 'tab-btn active' : 'tab-btn'}
-                type="button"
-                onClick={() => switchEnrollmentPlatform('zerotouch')}
-              >
-                Zero-touch
-              </button>
-              <button
-                className={enrollmentPlatform === 'samsung' ? 'tab-btn active' : 'tab-btn'}
-                type="button"
-                onClick={() => switchEnrollmentPlatform('samsung')}
-              >
-                Samsung Knox
-              </button>
-            </div>
-          </section>
-
-          <section className="panel">
+          <section className="panel" id="carga-masiva">
             <h2>Carga masiva de dispositivos</h2>
             <form onSubmit={handleCreateDevice} className="form-grid form-grid-create">
               <div className="field-block full-width">
@@ -1622,7 +1643,7 @@ function App() {
             </p>
           </section>
 
-          <section className="panel chart-panel">
+          <section className="panel chart-panel" id="distribucion">
             <div className="chart-panel-header">
               <div>
                 <h2>{isSamsungMode ? 'Distribución por Familia' : 'Distribución por Marca'}</h2>
@@ -1792,7 +1813,7 @@ function App() {
             )}
           </section>
 
-          <section className="panel">
+          <section className="panel" id="dispositivos">
             <h2>Dispositivos ({sortedDevices.length}/{devices.length})</h2>
             <label>
               {isSamsungMode
@@ -1961,8 +1982,8 @@ function App() {
             </div>
           </section>
         </ErrorBoundary>
-      )}
-    </main>
+      </main>
+    </div>
   );
 }
 

@@ -216,43 +216,71 @@ p {
 }
 
 /* ==========================================================================
-   Barra Superior (Header & Sesión)
+   Menú lateral (consola con sesión)
+
+   El mismo del portal de One: en escritorio, panel fijo a la izquierda y el
+   contenido a la derecha; en pantallas angostas, una barra arriba y el mismo
+   panel como cajón (<dialog> modal). Vive dentro de .app-shell para tomar el
+   acento del modo Samsung.
    ========================================================================== */
 
-.barra {
-  position: sticky;
-  top: 10px;
-  z-index: 40;
+.app-shell.con-menu {
+  --menu-ancho: 16.5rem;
+  --barra-movil-alto: 60px;
+
+  max-width: none;
+  margin: 0;
+  padding: var(--barra-movil-alto) 0 0;
+}
+
+.contenido {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 24px 16px 56px;
+}
+
+/* Las anclas del menú dejan aire sobre el título; en móvil, además, la barra fija no lo tapa. */
+.contenido section[id] {
+  scroll-margin-top: calc(var(--barra-movil-alto) + 16px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+.menu-lateral {
+  display: none;
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 30;
+  width: var(--menu-ancho);
+  border-right: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.menu-panel {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 20px;
-  background: color-mix(in srgb, var(--card) 92%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-  margin-bottom: 22px;
-  overflow: hidden;
-  position: relative;
+  flex-direction: column;
+  gap: 24px;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 12px;
 }
 
-/* Franja de la guía de marca, bajo la barra: la firma de Intechsys en cada pantalla */
-.barra::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0;
-  height: 3px;
-  background: var(--brand-band);
+.menu-marca {
+  display: grid;
+  gap: 12px;
 }
 
-.marca {
+.menu-marca-fila {
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 0;
+  padding: 4px 12px;
 }
 
 .marca-logo {
@@ -263,39 +291,257 @@ p {
 
 .marca-logo img {
   display: block;
-  height: 36px;
+  height: 40px;
   width: auto;
 }
 
-.marca-texto {
+.menu-marca-texto {
   display: flex;
   flex-direction: column;
-  gap: 1px;
   min-width: 0;
-  line-height: 1.2;
+  line-height: 1.3;
 }
 
-.marca-nombre {
-  font-family: var(--font-ui);
-  font-weight: 700;
-  font-size: 1.15rem;
-  letter-spacing: -0.02em;
+.menu-producto {
+  font-size: 0.8125rem;
+  font-weight: 600;
   color: var(--ink);
 }
 
-.rotulo {
-  font-size: 0.8rem;
+.menu-empresa {
+  font-size: 0.75rem;
   color: var(--muted);
-  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.barra-derecha {
+.menu-navegacion {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.menu-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.menu-grupo-titulo {
+  padding: 0 12px 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.menu-entrada {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.84375rem;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.menu-entrada svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+/* Barrita de acento pegada al borde izquierdo; solo se ve en la entrada activa. */
+.menu-entrada::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 2px;
+  height: 20px;
+  margin-top: -10px;
+  border-radius: 0 999px 999px 0;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.menu-entrada:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.menu-entrada[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.menu-entrada[aria-current="page"]::before {
+  opacity: 1;
+}
+
+/* En oscuro el acento no llega a 4,5:1 sobre el acento suave; el fuerte sí. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .menu-entrada[aria-current="page"] {
+    color: var(--accent-strong);
+  }
+}
+
+:root[data-theme="dark"] .menu-entrada[aria-current="page"] {
+  color: var(--accent-strong);
+}
+
+.menu-entrada:focus-visible,
+.boton-menu:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.menu-pie {
+  display: grid;
+  gap: 12px;
+  margin-top: auto;
+  padding: 0 12px;
+}
+
+.menu-usuario {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-pie-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Pantallas angostas: barra fija arriba con el botón que abre el cajón */
+.barra-movil {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--barra-movil-alto);
+  padding: 0 16px 0 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.barra-movil .marca-logo img {
+  height: 32px;
+}
+
+.barra-movil-nombre {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.boton-menu {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.boton-menu:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.boton-menu svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* El cajón: el mismo panel, desde la izquierda y sobre un fondo oscurecido */
+.menu-cajon {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--menu-ancho);
+  max-width: calc(100vw - 48px);
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.menu-cajon::backdrop {
+  background: rgba(30, 31, 29, 0.5);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .menu-cajon[open] {
+    animation: menu-entra 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .menu-cajon[open]::backdrop {
+    animation: menu-fondo 0.22s ease;
+  }
+}
+
+@keyframes menu-entra {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes menu-fondo {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Escritorio: el panel fijo a la vista, sin barra ni cajón; el contenido corre a la derecha */
+@media (min-width: 1024px) {
+  .app-shell.con-menu {
+    padding: 0 0 0 var(--menu-ancho);
+  }
+
+  .contenido {
+    padding: 32px 32px 56px;
+  }
+
+  .contenido section[id] {
+    scroll-margin-top: 24px;
+  }
+
+  .menu-lateral {
+    display: block;
+  }
+
+  .barra-movil {
+    display: none;
+  }
 }
 
 .barra-ingreso {
@@ -305,6 +551,8 @@ p {
 }
 
 .selector-empresa {
+  width: 100%;
+  min-width: 0;
   font-family: var(--font-ui);
   font-size: 0.85rem;
   font-weight: 600;
@@ -323,22 +571,6 @@ p {
   border-color: var(--accent);
 }
 
-.correo {
-  color: var(--muted);
-  font-size: 0.84rem;
-  font-weight: 500;
-  max-width: 200px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-@media (max-width: 680px) {
-  .correo {
-    display: none;
-  }
-}
-
 .boton-salir {
   appearance: none;
   display: inline-flex;
@@ -354,6 +586,11 @@ p {
   padding: 6px 12px;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+.boton-salir svg {
+  width: 15px;
+  height: 15px;
 }
 
 .boton-salir:hover {
@@ -776,12 +1013,6 @@ tbody tr:hover {
 @media (max-width: 620px) {
   .app-shell {
     padding: 16px 12px 44px;
-  }
-
-  .barra {
-    flex-wrap: wrap;
-    gap: 12px;
-    padding: 10px 14px;
   }
 
   .form-grid-create {
