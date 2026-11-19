@@ -215,10 +215,6 @@ p {
   --table-hover: #2c2b28;
 }
 
-.app-shell.samsung-mode .producto {
-  color: var(--brand-amber-text);
-}
-
 /* ==========================================================================
    Menú lateral (consola con sesión)
 
@@ -535,12 +531,6 @@ p {
   }
 }
 
-.barra-ingreso {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 14px;
-}
-
 .selector-empresa {
   width: 100%;
   min-width: 0;
@@ -628,33 +618,6 @@ p {
   display: block;
 }
 
-/* Pantalla de login / entrada */
-.marca-entrada {
-  margin-bottom: 20px;
-}
-
-.marca-entrada .producto {
-  color: var(--ink);
-  font-size: 1.15rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin-top: 6px;
-}
-
-.ingreso-logo img {
-  display: block;
-  width: 340px;
-  max-width: 100%;
-  height: auto;
-}
-
-@media (max-width: 479px) {
-  .ingreso-logo img {
-    width: auto;
-    height: 64px;
-  }
-}
-
 h1 {
   font-size: clamp(1.8rem, 3.7vw, 2.8rem);
   font-weight: 700;
@@ -675,11 +638,6 @@ h2 {
   padding: 18px;
   margin-bottom: 16px;
   transition: background 0.2s ease, border-color 0.2s ease;
-}
-
-.login-panel {
-  max-width: 560px;
-  margin: 0 auto;
 }
 
 /* ==========================================================================
@@ -739,7 +697,7 @@ h2 {
 }
 
 /* ==========================================================================
-   Pantallas de paso sin sesión (elegir empresa, abriendo la consola)
+   Pantallas sin sesión (login, elegir empresa, entrar con One, errores)
 
    Réplica del marco de WorkLog: fondo liso, columna de 28rem con la marca,
    una tarjeta y el pie. Los tokens se redefinen aquí con los valores de
@@ -756,6 +714,10 @@ h2 {
   --muted: #5a5958;
   --accent: #af1839;
   --accent-soft: #fbe9ee;
+  --primario: #af1839;
+  --primario-encima: #751326;
+  --precaucion: #8a4105;
+  --precaucion-suave: #fef3da;
 
   display: flex;
   align-items: center;
@@ -782,6 +744,9 @@ h2 {
     --muted: #a3a19d;
     --accent: #ff6b8b;
     --accent-soft: #3a1620;
+    --primario-encima: #c41d43;
+    --precaucion: #f8c45a;
+    --precaucion-suave: #3a2b0e;
   }
 }
 
@@ -795,6 +760,9 @@ h2 {
   --muted: #a3a19d;
   --accent: #ff6b8b;
   --accent-soft: #3a1620;
+  --primario-encima: #c41d43;
+  --precaucion: #f8c45a;
+  --precaucion-suave: #3a2b0e;
 }
 
 /* Sin la franja de marca de la consola: WorkLog no la tiene. */
@@ -905,6 +873,95 @@ body:has(.marco-paso)::before {
 .paso-boton-fantasma svg {
   width: 16px;
   height: 16px;
+}
+
+/* Botón principal de WorkLog (variante primary, tamaño lg): ocupa el ancho de la tarjeta. */
+.paso-boton-primario {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 10px;
+  background: var(--primario);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+  user-select: none;
+  transition:
+    background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.paso-boton-primario:not(:disabled):hover {
+  background: var(--primario-encima);
+}
+
+.paso-boton-primario:active {
+  transform: translateY(1px);
+}
+
+.paso-boton-primario:disabled {
+  opacity: 0.5;
+}
+
+.paso-boton-primario svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.paso-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Aviso de error en la tarjeta, como el InlineMessage de WorkLog. */
+.aviso-paso {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--precaucion-suave);
+  color: var(--precaucion);
+  font-size: 14px;
+  line-height: 1.625;
+}
+
+.aviso-paso svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.aviso-paso > div {
+  min-width: 0;
+}
+
+/* Mientras se retoma la sesión: solo el indicador, centrado, como WorkLog. */
+.paso-girador {
+  width: 24px;
+  height: 24px;
+  color: var(--accent);
+}
+
+/* Texto solo para lectores de pantalla. */
+.solo-lector {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .paso-espera {
@@ -1101,16 +1158,6 @@ button {
 .ghost-btn:not(:disabled):hover {
   background: var(--accent-soft);
   color: var(--accent-strong);
-}
-
-/* Acción secundaria dentro de un texto */
-.link-btn {
-  background: none;
-  padding: 0;
-  border-radius: 0;
-  color: var(--accent-strong);
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
 .danger-btn {

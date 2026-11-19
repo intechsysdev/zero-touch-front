@@ -32,6 +32,18 @@ const SALIDA_STORAGE_KEY = 'zerotouch.sso.salio';
 export const marcarSalida = () => sessionStorage.setItem(SALIDA_STORAGE_KEY, '1');
 export const acabaDeSalir = () => sessionStorage.getItem(SALIDA_STORAGE_KEY) === '1';
 
+/** Ya se intentó entrar solo en esta pestaña: si One falló, no se rebota en bucle. */
+const AUTOMATICA_STORAGE_KEY = 'zerotouch.sso.automatico';
+
+/**
+ * Quien llega al login sin haber salido viene a usar la consola: si tiene sesión en One, entra con
+ * ella sin escribir nada; si no, One le pide la contraseña y lo devuelve aquí. Como en WorkLog.
+ */
+export const puedeEntrarSolo = () =>
+  !acabaDeSalir() && sessionStorage.getItem(AUTOMATICA_STORAGE_KEY) === null;
+
+export const marcarEntradaAutomatica = () => sessionStorage.setItem(AUTOMATICA_STORAGE_KEY, '1');
+
 /**
  * Llama al reenvío del API de zero-touch y, si ese API todavía no lo tiene (versión anterior
  * desplegada: 404), va directo a One. Lo directo exige que el dominio de la consola esté en el
@@ -73,11 +85,7 @@ export function getRedirectUri(): string {
  * consola con la empresa que lo tiene como variable de la app (Partner ID de Reseller). Quién
  * entra lo decide One con su login; el Client ID solo dice a qué empresa.
  */
-export async function iniciarSSO(
-  tenantId?: string | null,
-  selectAccount = false,
-  clientIdCliente?: string | null,
-): Promise<void> {
+export async function iniciarSSO(tenantId?: string | null, selectAccount = false): Promise<void> {
   const pkce = {
     verificador: randomBase64(32),
     estado: randomBase64(16),
@@ -97,8 +105,6 @@ export async function iniciarSSO(
 
   if (tenantId) {
     authUrl.searchParams.set('tenant', tenantId);
-  } else if (clientIdCliente?.trim()) {
-    authUrl.searchParams.set('tenant_hint', clientIdCliente.trim());
   }
 
   if (selectAccount) {
@@ -162,7 +168,9 @@ export async function procesarCallbackSSO(): Promise<SsoTokenResult> {
   }
 
   const tokenData = await response.json();
+  // Con sesión abierta, las marcas de salida y de entrada automática sobran.
   sessionStorage.removeItem(SALIDA_STORAGE_KEY);
+  sessionStorage.removeItem(AUTOMATICA_STORAGE_KEY);
 
   return {
     accessToken: tokenData.accessToken,

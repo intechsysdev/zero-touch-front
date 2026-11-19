@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { AlertTriangle, LoaderCircle } from 'lucide-react';
 import { PRODUCTO } from '../producto';
 import { MarcaProducto } from './Marca';
 
@@ -15,9 +16,9 @@ type Props = {
 };
 
 /**
- * Marco de las pantallas de paso sin sesión (elegir empresa, abriendo la consola), el mismo de
- * WorkLog: la marca centrada, una tarjeta con el título y el contenido, y el pie del producto.
- * El ingreso por Client ID tiene su propio diseño y no pasa por aquí.
+ * Marco de las pantallas sin sesión (login, elegir empresa, entrar con One, errores al entrar), el
+ * mismo de WorkLog: la marca centrada, una tarjeta con el título y el contenido, y el pie del
+ * producto.
  */
 export function MarcoPaso({ titulo, descripcion, aviso, enfocarTitulo, ocupado, children }: Props) {
   const tituloRef = useRef<HTMLHeadingElement>(null);
@@ -43,5 +44,27 @@ export function MarcoPaso({ titulo, descripcion, aviso, enfocarTitulo, ocupado, 
         <p className="paso-pie">INTECHSYS ONE · {PRODUCTO.nombre}</p>
       </div>
     </main>
+  );
+}
+
+/** Aviso de error en la tarjeta, como el InlineMessage de WorkLog: ámbar, con el triángulo. */
+export function AvisoPaso({ children }: { children: ReactNode }) {
+  return (
+    <div className="aviso-paso" role="alert">
+      <AlertTriangle aria-hidden />
+      <div>{children}</div>
+    </div>
+  );
+}
+
+/** Paso en curso (conectando con One, entrando): el título dice qué pasa y abajo, la espera. */
+export function PasoEnCurso({ titulo }: { titulo: string }) {
+  return (
+    <MarcoPaso titulo={titulo} ocupado>
+      <div className="paso-espera" role="status">
+        <LoaderCircle className="paso-girando" aria-hidden />
+        Un momento, por favor.
+      </div>
+    </MarcoPaso>
   );
 }

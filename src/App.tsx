@@ -1,15 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, FormEvent, ReactNode } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import BarcodeScannerComponent from 'react-qr-barcode-scanner';
-import { ChartPie, List, LoaderCircle, ShieldCheck, Smartphone, Upload } from 'lucide-react';
-import { acabaDeSalir, BACKEND_BASE_URL, cerrarSesionOne, iniciarSSO, marcarSalida, procesarCallbackSSO } from './sso';
-import { SelectorTema } from './componentes/SelectorTema';
-import { LogoEntrada } from './componentes/Marca';
+import { ArrowRight, ChartPie, List, LoaderCircle, LogOut, ShieldCheck, Smartphone, Upload } from 'lucide-react';
+import {
+  acabaDeSalir,
+  BACKEND_BASE_URL,
+  cerrarSesionOne,
+  iniciarSSO,
+  marcarEntradaAutomatica,
+  marcarSalida,
+  procesarCallbackSSO,
+  puedeEntrarSolo,
+} from './sso';
 import { MenuLateral } from './componentes/MenuLateral';
 import type { GrupoMenu } from './componentes/MenuLateral';
 import { ErrorBoundary } from './componentes/ErrorBoundary';
 import { EleccionEmpresa } from './componentes/EleccionEmpresa';
-import { MarcoPaso } from './componentes/MarcoPaso';
+import { AvisoPaso, MarcoPaso, PasoEnCurso } from './componentes/MarcoPaso';
 import { PRODUCTO } from './producto';
 import { getSamsungFamily } from './samsungModels';
 
@@ -386,6 +393,31 @@ function sesionPorRetomar(): AuthSession | null {
   }
 }
 
+/** La cuenta entra a One pero ninguna de sus empresas tiene la app: va a su propia pantalla. */
+class ErrorSinAcceso extends Error {
+  correo?: string;
+
+  constructor(mensaje: string, correo?: string) {
+    super(mensaje);
+    this.correo = correo;
+  }
+}
+
+/** En qué paso de la entrada con One abre la página: /sso va a One y /sso/callback vuelve de allá. */
+function pasoSsoInicial(): 'conectando' | 'terminando' | null {
+  const pathname = window.location.pathname.replace(/\/+$/, '');
+  if (pathname === '/sso') return 'conectando';
+  if (pathname === '/sso/callback') return 'terminando';
+  return null;
+}
+
+/** Sin sesión que retomar ni nada que hacer en la URL, quien no acaba de salir entra solo con One. */
+function entraSoloAlAbrir(): boolean {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (pasoSsoInicial() !== null || urlParams.get('token') || urlParams.get('accessToken')) return false;
+  return sesionPorRetomar() === null && puedeEntrarSolo();
+}
+
 function cleanImei(val: unknown): string {
   if (val === null || val === undefined) return '';
   const cleaned = String(val).trim().replace(/[\s-]/g, '');
@@ -656,7 +688,12 @@ function App() {
   const [enrollmentPlatform, setEnrollmentPlatform] = useState<'zerotouch' | 'samsung'>('zerotouch');
   const isSamsungMode = enrollmentPlatform === 'samsung';
 
-  const [clientId, setClientId] = useState('');
+  // Entrada con One, como en WorkLog: el paso en curso, el fallo al volver, la cuenta sin acceso
+  // y la entrada automática de quien tiene sesión abierta en One.
+  const [pasoSso, setPasoSso] = useState(pasoSsoInicial);
+  const [falloSso, setFalloSso] = useState<string | null>(null);
+  const [sinAcceso, setSinAcceso] = useState<{ mensaje: string; correo?: string } | null>(null);
+  const [entrandoSolo, setEntrandoSolo] = useState(entraSoloAlAbrir);
 
   const [successText, setSuccessText] = useState('');
   const [identifierType, setIdentifierType] = useState<IdentifierType>('imei');
@@ -917,7 +954,12 @@ function App() {
         setEleccionEmpresa({ accessToken: token, refreshToken, empresas: elegibles });
         return null;
       }
-      throw new Error(`Su usuario no tiene empresas con ${PRODUCTO.nombre} en Intechsys One.`);
+      throw new ErrorSinAcceso(
+        `Ninguna de las empresas a las que perteneces en One tiene asignada la app ${PRODUCTO.nombre}. ` +
+          'Pide al administrador de la plataforma que se la asigne a tu empresa o que te agregue como ' +
+          'miembro de una que ya la tenga.',
+        data.usuario?.email,
+      );
     }
 
     const zeroTouchAvailable = active.zeroTouchAvailable ?? true;
@@ -961,8 +1003,10 @@ function App() {
     // Flujo 1: One inicia el flujo en /sso (botón en catálogo de One)
     if (pathname === '/sso') {
       const tenantParam = urlParams.get('tenant') || urlParams.get('tenantId');
-      setIsBusy(true);
-      void iniciarSSO(tenantParam);
+      iniciarSSO(tenantParam).catch((err) => {
+        setFalloSso(getErrorMessage(err));
+        setPasoSso(null);
+      });
       return;
     }
 
@@ -973,14 +1017,16 @@ function App() {
         .then((ssoResult) => {
           return cargarSesion(ssoResult.accessToken, ssoResult.tenantId, ssoResult.refreshToken);
         })
-        .then(() => {
-          window.history.replaceState({}, document.title, '/');
-        })
         .catch((err) => {
           console.error('Error procesando callback SSO de One:', err);
-          setErrorText(getErrorMessage(err));
+          if (err instanceof ErrorSinAcceso) setSinAcceso({ mensaje: err.message, correo: err.correo });
+          else setFalloSso(getErrorMessage(err));
         })
         .finally(() => {
+          // La vuelta de One no se queda en la barra: al recargar se intentaría canjear otra vez el
+          // código, que ya se usó.
+          window.history.replaceState({}, document.title, '/');
+          setPasoSso(null);
           setIsBusy(false);
         });
       return;
@@ -1009,6 +1055,14 @@ function App() {
     // única o pregunta con cuál trabajar) y llegan al día las empresas y plataformas.
     const parsed = sesionPorRetomar();
     if (!parsed) {
+      // Sin sesión que retomar: quien no acaba de salir entra solo con su sesión de One.
+      if (entrandoSolo) {
+        marcarEntradaAutomatica();
+        iniciarSSO(null).catch((err) => {
+          setEntrandoSolo(false);
+          setErrorText(getErrorMessage(err));
+        });
+      }
       return;
     }
     cargarSesion(parsed.accessToken, parsed.oneTenantId, parsed.refreshToken)
@@ -1156,20 +1210,10 @@ function App() {
     }
   }
 
-  function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const normalizedClientId = clientId.trim();
-    if (!normalizedClientId) {
-      setErrorText('Client ID es obligatorio.');
-      return;
-    }
-
-    // One autentica al usuario y abre la consola con la empresa que tiene este Client ID. Con
-    // sesión abierta en One entra directo; solo tras salir de la consola pregunta con qué cuenta.
-    setIsBusy(true);
+  /** "Entrar con INTECHSYS ONE". Tras salir de la consola, One pregunta con qué cuenta seguir. */
+  function entrarConOne() {
     setErrorText('');
-    void iniciarSSO(null, acabaDeSalir(), normalizedClientId);
+    iniciarSSO(null, acabaDeSalir()).catch((err) => setErrorText(getErrorMessage(err)));
   }
 
   /** Abre la consola con la empresa elegida en la pantalla de entrada, igual que el selector del menú. */
@@ -1192,6 +1236,9 @@ function App() {
     const abierta = session ?? eleccionEmpresa;
     if (abierta) void cerrarSesionOne(abierta.accessToken, abierta.refreshToken);
     setEleccionEmpresa(null);
+    setSinAcceso(null);
+    setFalloSso(null);
+    setEntrandoSolo(false);
     setSession(null);
     setDevices([]);
     setDeviceSearch('');
@@ -1468,18 +1515,8 @@ function App() {
     </>
   );
 
-  // Marco de la pantalla de ingreso por Client ID: sin menú.
-  const marcoEntrada = (contenido: ReactNode) => (
-    <main className={`app-shell ${isSamsungMode ? 'samsung-mode' : ''}`}>
-      <header className="barra-ingreso">
-        <SelectorTema />
-      </header>
-
-      {avisos}
-
-      {contenido}
-    </main>
-  );
+  // Las pantallas sin sesión son las de WorkLog, con su aviso de error.
+  const avisoPaso = errorText ? <AvisoPaso>{errorText}</AvisoPaso> : null;
 
   // Varias empresas y ninguna indicada: se elige antes de abrir la consola.
   if (!session && eleccionEmpresa) {
@@ -1487,70 +1524,78 @@ function App() {
       <EleccionEmpresa
         empresas={eleccionEmpresa.empresas}
         ocupado={isBusy}
-        aviso={avisos}
+        aviso={avisoPaso}
         onElegir={elegirEmpresa}
         onSalir={handleLogout}
       />
     );
   }
 
-  // Comprobando la sesión guardada: una pantalla de paso, sin el formulario de ingreso.
-  if (!session && comprobandoSesion) {
+  // Entró a One, pero ninguna de sus empresas tiene la app.
+  if (!session && sinAcceso) {
     return (
-      <MarcoPaso titulo="Abriendo la consola…" aviso={avisos} ocupado>
-        <div className="paso-espera" role="status">
-          <LoaderCircle className="paso-girando" aria-hidden />
-          Un momento, por favor.
+      <MarcoPaso titulo={`No tienes acceso a ${PRODUCTO.nombre}`} descripcion={sinAcceso.correo}>
+        <AvisoPaso>{sinAcceso.mensaje}</AvisoPaso>
+        <div className="paso-acciones">
+          <button type="button" className="paso-boton-fantasma" onClick={handleLogout}>
+            <LogOut aria-hidden />
+            Salir
+          </button>
         </div>
       </MarcoPaso>
     );
   }
 
-  // Sin sesión: la pantalla de ingreso por Client ID, sin menú.
+  // La ida o la vuelta de One fallaron.
+  if (!session && falloSso) {
+    return (
+      <MarcoPaso titulo="No pudimos completar el inicio de sesión">
+        <AvisoPaso>{falloSso}</AvisoPaso>
+        <button type="button" className="paso-boton-primario" onClick={() => void iniciarSSO(null)}>
+          Intentar de nuevo
+        </button>
+      </MarcoPaso>
+    );
+  }
+
+  // Yendo a One (/sso) o volviendo de allá (/sso/callback).
+  if (!session && pasoSso) {
+    return (
+      <PasoEnCurso titulo={pasoSso === 'conectando' ? 'Conectando con INTECHSYS ONE…' : 'Terminando de entrar…'} />
+    );
+  }
+
+  // Retomando la sesión guardada: solo el indicador, como WorkLog mientras carga el perfil.
+  if (!session && comprobandoSesion) {
+    return (
+      <div className="marco-paso" role="status">
+        <LoaderCircle className="paso-girador paso-girando" aria-hidden />
+        <span className="solo-lector">Cargando tu perfil</span>
+      </div>
+    );
+  }
+
+  // Sin sesión: el login de WorkLog. Enroll no tiene cuentas propias, se entra con la de One.
   if (!session) {
-    return marcoEntrada(
-      <section className="panel login-panel">
-        <div className="marca-entrada">
-          <LogoEntrada />
-          <p className="producto">{PRODUCTO.nombre}</p>
-          <h1>Console Web</h1>
-        </div>
-        <h2>Ingreso por cliente</h2>
-        <p>
-          Escriba su Client ID. Lo llevaremos a Intechsys One para que inicie sesión con su usuario,
-          y volverá aquí con su empresa abierta.
-        </p>
-        <form onSubmit={handleLogin} className="form-grid">
-          <label>
-            Client ID
-            <input
-              value={clientId}
-              onChange={(event) => setClientId(event.target.value)}
-              placeholder="1295751765"
-              inputMode="numeric"
-              autoComplete="off"
-              required
-            />
-          </label>
-          <button className="primary-btn" type="submit" disabled={isBusy}>
-            {isBusy ? 'Abriendo Intechsys One...' : 'Continuar con Intechsys One'}
-          </button>
-        </form>
-        <p className="hint" style={{ marginTop: '1rem', textAlign: 'center' }}>
-          ¿Entra a varias empresas?{' '}
-          <button
-            type="button"
-            className="link-btn"
-            onClick={() => {
-              setIsBusy(true);
-              void iniciarSSO(null, acabaDeSalir());
-            }}
-            disabled={isBusy}
-          >
-            Entrar con su cuenta de One y elegir la empresa
-          </button>
-        </p>
-      </section>
+    const conectando = entrandoSolo && !errorText;
+    return (
+      <MarcoPaso
+        titulo={conectando ? 'Conectando con INTECHSYS ONE…' : `Bienvenido a ${PRODUCTO.nombre}`}
+        descripcion="Entra con tu cuenta de INTECHSYS ONE. Es la misma de las demás aplicaciones de tu empresa."
+        aviso={avisoPaso}
+        ocupado={conectando}
+      >
+        <button
+          type="button"
+          className="paso-boton-primario"
+          disabled={conectando}
+          aria-busy={conectando || undefined}
+          onClick={entrarConOne}
+        >
+          {conectando ? <LoaderCircle className="paso-girando" aria-hidden /> : <ArrowRight aria-hidden />}
+          Entrar con INTECHSYS ONE
+        </button>
+      </MarcoPaso>
     );
   }
 
