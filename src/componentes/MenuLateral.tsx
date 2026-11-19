@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { LogOut, Menu, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { MarcaCompacta } from './Marca';
+import { PRODUCTO } from '../producto';
+import { MarcaProducto } from './Marca';
 import { SelectorTema } from './SelectorTema';
 
 /** Una entrada del menú: un enlace (href) o un botón que hace algo (onElegir). */
@@ -22,8 +23,7 @@ export type GrupoMenu = {
 };
 
 type Props = {
-  producto: string;
-  /** Empresa activa, bajo el nombre del producto. */
+  /** Empresa activa, bajo la marca. */
   empresa?: string;
   /** Con varias empresas, el selector va bajo la marca a todo el ancho. */
   selectorEmpresa?: ReactNode;
@@ -95,8 +95,12 @@ export function MenuLateral(props: Props) {
         >
           {abierto ? <X aria-hidden /> : <Menu aria-hidden />}
         </button>
-        <MarcaCompacta />
-        <span className="barra-movil-nombre">{props.producto}</span>
+        <MarcaProducto className="barra-movil-marca" />
+        {/* Si la marca completa no cabe, la compacta con el nombre del producto. */}
+        <span className="barra-movil-corta">
+          <MarcaProducto compacta />
+          <span className="barra-movil-nombre">{PRODUCTO.nombre}</span>
+        </span>
       </header>
 
       {/* El panel llena el cajón: un clic cuyo destino es el propio <dialog> vino del fondo. */}
@@ -118,7 +122,6 @@ export function MenuLateral(props: Props) {
 
 /** Contenido del panel: marca, navegación y pie. Se dibuja en el panel fijo y en el cajón. */
 function PanelMenu({
-  producto,
   empresa,
   selectorEmpresa,
   grupos,
@@ -132,13 +135,8 @@ function PanelMenu({
   return (
     <div className="menu-panel">
       <div className="menu-marca">
-        <div className="menu-marca-fila">
-          <MarcaCompacta />
-          <div className="menu-marca-texto">
-            <span className="menu-producto">{producto}</span>
-            {empresa ? <span className="menu-empresa">{empresa}</span> : null}
-          </div>
-        </div>
+        <MarcaProducto className="menu-marca-fila" />
+        {empresa ? <p className="menu-empresa">{empresa}</p> : null}
         {selectorEmpresa}
       </div>
 

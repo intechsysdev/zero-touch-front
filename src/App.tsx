@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import BarcodeScannerComponent from 'react-qr-barcode-scanner';
-import { ChartPie, List, ShieldCheck, Smartphone, Upload } from 'lucide-react';
+import { ChartPie, List, LoaderCircle, ShieldCheck, Smartphone, Upload } from 'lucide-react';
 import { acabaDeSalir, BACKEND_BASE_URL, cerrarSesionOne, iniciarSSO, marcarSalida, procesarCallbackSSO } from './sso';
 import { SelectorTema } from './componentes/SelectorTema';
 import { LogoEntrada } from './componentes/Marca';
@@ -9,6 +9,8 @@ import { MenuLateral } from './componentes/MenuLateral';
 import type { GrupoMenu } from './componentes/MenuLateral';
 import { ErrorBoundary } from './componentes/ErrorBoundary';
 import { EleccionEmpresa } from './componentes/EleccionEmpresa';
+import { MarcoPaso } from './componentes/MarcoPaso';
+import { PRODUCTO } from './producto';
 import { getSamsungFamily } from './samsungModels';
 
 type AuthSession = {
@@ -885,7 +887,7 @@ function App() {
       return cargarSesion(token, null, refreshToken);
     }
 
-    // Las empresas por las que llega a Zero-touch, en el orden del API: van al selector del menú
+    // Las empresas por las que llega a Enroll, en el orden del API: van al selector del menú
     // y, mientras no haya elegido ninguna, a la pantalla para elegir.
     const empresas = (data.empresas || []).map((e) => ({
       id: e.id || undefined,
@@ -915,7 +917,7 @@ function App() {
         setEleccionEmpresa({ accessToken: token, refreshToken, empresas: elegibles });
         return null;
       }
-      throw new Error('Su usuario no tiene empresas con Zero-touch en Intechsys One.');
+      throw new Error(`Su usuario no tiene empresas con ${PRODUCTO.nombre} en Intechsys One.`);
     }
 
     const zeroTouchAvailable = active.zeroTouchAvailable ?? true;
@@ -1466,7 +1468,7 @@ function App() {
     </>
   );
 
-  // Marco de las pantallas sin sesión de la consola (ingreso, elegir empresa): sin menú.
+  // Marco de la pantalla de ingreso por Client ID: sin menú.
   const marcoEntrada = (contenido: ReactNode) => (
     <main className={`app-shell ${isSamsungMode ? 'samsung-mode' : ''}`}>
       <header className="barra-ingreso">
@@ -1481,28 +1483,26 @@ function App() {
 
   // Varias empresas y ninguna indicada: se elige antes de abrir la consola.
   if (!session && eleccionEmpresa) {
-    return marcoEntrada(
+    return (
       <EleccionEmpresa
-        producto="Zero-touch"
         empresas={eleccionEmpresa.empresas}
         ocupado={isBusy}
+        aviso={avisos}
         onElegir={elegirEmpresa}
         onSalir={handleLogout}
       />
     );
   }
 
-  // Comprobando la sesión guardada: solo la marca, sin el formulario de ingreso.
+  // Comprobando la sesión guardada: una pantalla de paso, sin el formulario de ingreso.
   if (!session && comprobandoSesion) {
-    return marcoEntrada(
-      <section className="panel login-panel entrada-estrecha" aria-busy="true">
-        <div className="marca-entrada">
-          <LogoEntrada />
+    return (
+      <MarcoPaso titulo="Abriendo la consola…" aviso={avisos} ocupado>
+        <div className="paso-espera" role="status">
+          <LoaderCircle className="paso-girando" aria-hidden />
+          Un momento, por favor.
         </div>
-        <p className="hint" role="status">
-          Abriendo la consola…
-        </p>
-      </section>
+      </MarcoPaso>
     );
   }
 
@@ -1512,7 +1512,7 @@ function App() {
       <section className="panel login-panel">
         <div className="marca-entrada">
           <LogoEntrada />
-          <p className="producto">Zero-touch</p>
+          <p className="producto">{PRODUCTO.nombre}</p>
           <h1>Console Web</h1>
         </div>
         <h2>Ingreso por cliente</h2>
@@ -1588,7 +1588,6 @@ function App() {
   return (
     <div className={`app-shell con-menu ${isSamsungMode ? 'samsung-mode' : ''}`}>
       <MenuLateral
-        producto="Zero-touch"
         // Con varias empresas el selector ya dice cuál está abierta: el nombre no se repite.
         empresa={variasEmpresas ? undefined : session.companyName || 'Consola Web'}
         selectorEmpresa={

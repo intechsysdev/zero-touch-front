@@ -16,6 +16,8 @@
   --brand-amber: #da830b;
   --brand-amber-text: #a35f07;
   --brand-band: linear-gradient(90deg, var(--brand-deep), var(--brand-vivid) 50%, var(--brand-deep));
+  /* El "one" de la marca del producto: en oscuro se aclara para que se lea sobre el gris. */
+  --wordmark: #e51e49;
 
   --ink: #1e1f1d;
   --muted: #5a5958;
@@ -60,6 +62,7 @@
     --danger: #e51e49;
     --danger-strong: #f04e70;
     --shadow: 0 16px 42px rgba(0, 0, 0, 0.35);
+    --wordmark: #ff4f74;
 
     --table-zebra: #20211f;
     --table-hover: #2d2e2b;
@@ -86,6 +89,7 @@
   --danger: #e51e49;
   --danger-strong: #f04e70;
   --shadow: 0 16px 42px rgba(0, 0, 0, 0.35);
+  --wordmark: #ff4f74;
 
   --table-zebra: #20211f;
   --table-hover: #2d2e2b;
@@ -225,7 +229,8 @@ p {
    ========================================================================== */
 
 .app-shell.con-menu {
-  --menu-ancho: 16.5rem;
+  /* El ancho del panel de WorkLog: la marca del producto ("Enrolamiento automático") cabe en una línea. */
+  --menu-ancho: 18rem;
   --barra-movil-alto: 60px;
 
   max-width: none;
@@ -276,39 +281,11 @@ p {
 }
 
 .menu-marca-fila {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  padding: 4px 12px;
-}
-
-.marca-logo {
-  flex: none;
-  display: flex;
-  align-items: center;
-}
-
-.marca-logo img {
-  display: block;
-  height: 40px;
-  width: auto;
-}
-
-.menu-marca-texto {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 1.3;
-}
-
-.menu-producto {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--ink);
+  padding: 4px;
 }
 
 .menu-empresa {
+  padding: 0 4px;
   font-size: 0.75rem;
   color: var(--muted);
   white-space: nowrap;
@@ -446,8 +423,21 @@ p {
   background: var(--paper);
 }
 
-.barra-movil .marca-logo img {
-  height: 32px;
+.barra-movil-corta {
+  display: none;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Donde la marca completa ya no cabe junto al botón, la compacta con el nombre del producto. */
+@media (max-width: 339px) {
+  .barra-movil .barra-movil-marca {
+    display: none;
+  }
+
+  .barra-movil-corta {
+    display: flex;
+  }
 }
 
 .barra-movil-nombre {
@@ -483,7 +473,8 @@ p {
   position: fixed;
   inset: 0 auto 0 0;
   width: var(--menu-ancho);
-  max-width: calc(100vw - 48px);
+  /* Desde 320 px el cajón conserva el ancho del panel y la marca no se parte en dos líneas. */
+  max-width: calc(100vw - 32px);
   height: 100%;
   max-height: none;
   margin: 0;
@@ -691,53 +682,266 @@ h2 {
   margin: 0 auto;
 }
 
-/* Tarjetas de entrada más angostas que el ingreso: elegir empresa y abriendo la sesión. */
-.login-panel.entrada-estrecha {
-  max-width: 28rem;
-  padding: 24px;
+/* ==========================================================================
+   Marca del producto (la de WorkLog): isotipo + "one", separador, nombre y
+   descripción. Va en el menú y en las pantallas de paso.
+   ========================================================================== */
+
+.marca-producto {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-/* Elegir empresa al entrar con INTECHSYS ONE */
-.eleccion-empresa {
-  display: grid;
-  /* Sin minmax la columna crecería al ancho del nombre más largo en lugar de truncarlo. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
-}
-
-.eleccion-empresa .marca-entrada {
-  margin-bottom: 0;
-}
-
-.eleccion-cabecera {
-  display: grid;
+.marca-producto-one {
+  display: flex;
+  align-items: center;
   gap: 6px;
 }
 
-.eleccion-titulo {
-  font-size: 24px;
+.marca-producto-one img {
+  display: block;
+  width: 30px;
+  height: 31px;
+}
+
+.marca-producto-one span {
+  font-size: 27px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.045em;
+  color: var(--wordmark);
+}
+
+.marca-producto-separador {
+  width: 1px;
+  height: 28px;
+  background: var(--line);
+}
+
+.marca-producto-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.marca-producto-nombre {
+  font-size: 15px;
   font-weight: 700;
   line-height: 1.25;
-  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 
-/* Recibe el foco al mostrarse solo para que el lector de pantalla la anuncie. */
-.eleccion-titulo:focus {
-  outline: none;
-}
-
-.eleccion-descripcion {
-  font-size: 15px;
-  line-height: 1.55;
+.marca-producto-descripcion {
+  font-size: 12px;
+  line-height: 1.25;
   color: var(--muted);
 }
 
+/* ==========================================================================
+   Pantallas de paso sin sesión (elegir empresa, abriendo la consola)
+
+   Réplica del marco de WorkLog: fondo liso, columna de 28rem con la marca,
+   una tarjeta y el pie. Los tokens se redefinen aquí con los valores de
+   WorkLog, en claro y en oscuro, para que se vean igual que allá.
+   ========================================================================== */
+
+.marco-paso {
+  --paper: #f5f5f4;
+  --card: #ffffff;
+  --surface-2: #e8e8e7;
+  --line: #e2e2e1;
+  --ink: #1e1f1d;
+  --ink-soft: #3c3c3b;
+  --muted: #5a5958;
+  --accent: #af1839;
+  --accent-soft: #fbe9ee;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 40px 16px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .marco-paso {
+    --paper: #181817;
+    --card: #222220;
+    --surface-2: #2e2e2c;
+    --line: #353533;
+    --ink: #f3f2ef;
+    --ink-soft: #d2d0cc;
+    --muted: #a3a19d;
+    --accent: #ff6b8b;
+    --accent-soft: #3a1620;
+  }
+}
+
+:root[data-theme="dark"] .marco-paso {
+  --paper: #181817;
+  --card: #222220;
+  --surface-2: #2e2e2c;
+  --line: #353533;
+  --ink: #f3f2ef;
+  --ink-soft: #d2d0cc;
+  --muted: #a3a19d;
+  --accent: #ff6b8b;
+  --accent-soft: #3a1620;
+}
+
+/* Sin la franja de marca de la consola: WorkLog no la tiene. */
+body:has(.marco-paso)::before {
+  display: none;
+}
+
+.marco-paso :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.paso-columna {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  width: 100%;
+  max-width: 28rem;
+}
+
+.paso-marca {
+  justify-content: center;
+}
+
+.paso-tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+@media (min-width: 640px) {
+  .paso-tarjeta {
+    padding: 32px;
+  }
+}
+
+.paso-tarjeta .error-banner,
+.paso-tarjeta .success-banner {
+  margin-bottom: 0;
+}
+
+.paso-cabecera {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.paso-titulo {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: calc(2 / 1.5);
+  letter-spacing: normal;
+  color: var(--ink);
+}
+
+/* Recibe el foco al mostrarse solo para que el lector de pantalla la anuncie. */
+.marco-paso .paso-titulo:focus {
+  outline: none;
+}
+
+.paso-descripcion {
+  font-size: 15px;
+  line-height: 1.625;
+  color: var(--muted);
+}
+
+.paso-pie {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Botón fantasma de WorkLog (variante ghost, tamaño md). */
+.paso-boton-fantasma {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+  user-select: none;
+  transition:
+    background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.paso-boton-fantasma:not(:disabled):hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.paso-boton-fantasma:active {
+  transform: translateY(1px);
+}
+
+.paso-boton-fantasma svg {
+  width: 16px;
+  height: 16px;
+}
+
+.paso-espera {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--muted);
+}
+
+.paso-espera svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .paso-girando {
+    animation: paso-gira 1s linear infinite;
+  }
+}
+
+@keyframes paso-gira {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Elegir empresa al entrar con INTECHSYS ONE: la lista de WorkLog */
 .eleccion-lista {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
@@ -749,23 +953,19 @@ h2 {
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: var(--card);
-  color: var(--ink);
-  font-weight: 400;
+  background: transparent;
+  color: inherit;
+  font-weight: inherit;
   text-align: left;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .eleccion-opcion:not(:disabled):hover,
-.eleccion-opcion:focus-visible,
 .eleccion-opcion.abriendo {
   border-color: var(--accent);
   background: var(--accent-soft);
-}
-
-.eleccion-opcion:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 /* La que se está abriendo no se atenúa como las demás. */
@@ -774,14 +974,15 @@ h2 {
 }
 
 .eleccion-icono {
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 40px;
   height: 40px;
   border-radius: 10px;
   background: var(--surface-2);
-  color: var(--muted);
+  color: var(--ink-soft);
 }
 
 .eleccion-icono svg {
@@ -794,11 +995,11 @@ h2 {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .eleccion-nombre {
   font-weight: 600;
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -810,56 +1011,10 @@ h2 {
 }
 
 .eleccion-flecha {
-  flex-shrink: 0;
+  flex: none;
   width: 16px;
   height: 16px;
   color: var(--muted);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .eleccion-cargando {
-    animation: eleccion-gira 0.9s linear infinite;
-  }
-}
-
-@keyframes eleccion-gira {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Botón fantasma centrado, igual que en las otras apps: Salir no compite con las empresas. */
-.ghost-btn.eleccion-salir {
-  justify-self: center;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  color: var(--muted);
-}
-
-.ghost-btn.eleccion-salir:not(:disabled):hover {
-  background: var(--surface-2);
-  color: var(--ink);
-}
-
-.eleccion-salir svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* .login-panel anula el margen inferior del panel: el aire lo pone el pie. */
-.eleccion-pie {
-  margin-top: 16px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-@media (max-width: 479px) {
-  .login-panel.entrada-estrecha {
-    padding: 18px;
-  }
 }
 
 .info-panel {
