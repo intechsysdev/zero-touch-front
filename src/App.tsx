@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, FormEvent } from 'react';
+import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import BarcodeScannerComponent from 'react-qr-barcode-scanner';
 import { ChartPie, List, ShieldCheck, Smartphone, Upload } from 'lucide-react';
 import { acabaDeSalir, BACKEND_BASE_URL, cerrarSesionOne, iniciarSSO, marcarSalida, procesarCallbackSSO } from './sso';
@@ -8,6 +8,7 @@ import { LogoEntrada } from './componentes/Marca';
 import { MenuLateral } from './componentes/MenuLateral';
 import type { GrupoMenu } from './componentes/MenuLateral';
 import { ErrorBoundary } from './componentes/ErrorBoundary';
+import { EleccionEmpresa } from './componentes/EleccionEmpresa';
 import { getSamsungFamily } from './samsungModels';
 
 type AuthSession = {
@@ -25,6 +26,8 @@ type AuthSession = {
     nombre: string;
     slug: string;
     oneTenantId: string;
+    /** Rol del usuario en la empresa en One (Owner, Admin, Member, Viewer). */
+    rol?: string;
     zeroTouchCustomerName?: string;
     zeroTouchCustomerId?: string | null;
     samsungAvailable?: boolean;
@@ -37,6 +40,16 @@ type AuthSession = {
   samsungCustomerId?: string;
   platformType?: 'both' | 'samsung_only' | 'zerotouch_only' | 'none';
   preferredEnrollment?: 'zerotouch' | 'samsung';
+};
+
+/**
+ * Sesión de One con varias empresas y ninguna elegida: antes de abrir la consola se pregunta con
+ * cuál trabajar. Mientras tanto no hay AuthSession, así que no se pide nada de ninguna empresa.
+ */
+type EleccionPendiente = {
+  accessToken: string;
+  refreshToken?: string;
+  empresas: NonNullable<AuthSession['availableTenants']>;
 };
 
 type DeviceIdentifier = {
@@ -328,10 +341,47 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
       message = (message ? `${message}\n` : '') + items.join('\n');
     }
 
-    throw new Error(message || `Error HTTP ${response.status}`);
+    // El estado viaja con el error: así se distingue, por ejemplo, una empresa rechazada (403/404).
+    throw Object.assign(new Error(message || `Error HTTP ${response.status}`), { status: response.status });
   }
 
   return payload as T;
+}
+
+/** El API rechazó la empresa pedida: el usuario ya no está en ella, está inactiva o no existe. */
+function esEmpresaRechazada(error: unknown): boolean {
+  const status = (error as { status?: number } | null)?.status;
+  return status === 403 || status === 404;
+}
+
+/** Empresa de la sesión guardada en este navegador, si la hay. */
+function empresaGuardada(): string | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? (JSON.parse(raw) as AuthSession)?.oneTenantId || null : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sesión guardada que se retoma al abrir la consola sin venir de One (recargar, una pestaña
+ * nueva): el Flujo 4 del arranque. Con /sso, /sso/callback o un token en la URL no se retoma.
+ */
+function sesionPorRetomar(): AuthSession | null {
+  const pathname = window.location.pathname.replace(/\/+$/, '');
+  const urlParams = new URLSearchParams(window.location.search);
+  if (pathname === '/sso' || pathname === '/sso/callback') return null;
+  if (urlParams.get('token') || urlParams.get('accessToken')) return null;
+
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    const parsed = raw ? (JSON.parse(raw) as AuthSession) : null;
+    return parsed?.accessToken ? parsed : null;
+  } catch {
+    localStorage.removeItem(SESSION_KEY);
+    return null;
+  }
 }
 
 function cleanImei(val: unknown): string {
@@ -590,6 +640,10 @@ function extractFromCsvLikeText(source: string, identifierType: IdentifierType):
 
 function App() {
   const [session, setSession] = useState<AuthSession | null>(null);
+  const [eleccionEmpresa, setEleccionEmpresa] = useState<EleccionPendiente | null>(null);
+  // Al recargar se comprueba la sesión guardada antes de abrir la consola (Flujo 4): mientras
+  // tanto se muestra la marca y no el formulario de ingreso, que parpadearía en cada recarga.
+  const [comprobandoSesion, setComprobandoSesion] = useState(() => sesionPorRetomar() !== null);
   const [isBusy, setIsBusy] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [devices, setDevices] = useState<ManagedDevice[]>([]);
@@ -771,11 +825,16 @@ function App() {
     return sortedDevices.slice(start, start + devicePageSize);
   }, [sortedDevices, devicePage, devicePageSize]);
 
+  /**
+   * Arma la sesión de la consola con la empresa pedida. Sin empresa pedida, el API usa la guardada
+   * (apiRequest la manda) o, si el usuario solo tiene una, esa. Si con eso no hay empresa activa y
+   * tiene varias, no abre la consola: deja pendiente la elección y devuelve null.
+   */
   async function cargarSesion(
     token: string,
     tenantId?: string | null,
     refreshToken?: string,
-  ): Promise<AuthSession> {
+  ): Promise<AuthSession | null> {
     const reqHeaders: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (tenantId) reqHeaders['X-Tenant-Id'] = tenantId;
 
@@ -788,6 +847,7 @@ function App() {
         companyName?: string;
         slug?: string;
         oneTenantId?: string;
+        rol?: string;
         zeroTouchCustomerName?: string;
         zeroTouchAvailable?: boolean;
         zeroTouchCustomerId?: string | null;
@@ -810,15 +870,51 @@ function App() {
         samsungCustomerId?: string | null;
         platformType?: 'both' | 'samsung_only' | 'zerotouch_only' | 'none';
       } | null;
-    }>('/api/v1/sesion', { headers: reqHeaders });
-
-    // Sin empresa activa (usuario con varias que no eligió) se abre la primera: el API resuelve
-    // sus plataformas en cuanto llega con X-Tenant-Id.
-    const active = data.tenantActivo;
-    if (!active && data.empresas?.[0]?.oneTenantId && data.empresas[0].oneTenantId !== tenantId) {
-      return cargarSesion(token, data.empresas[0].oneTenantId, refreshToken);
+    }>('/api/v1/sesion', { headers: reqHeaders }).catch((error: unknown) => {
+      // La empresa guardada de antes ya no es accesible (lo quitaron de ella en One, se desactivó
+      // o se borró): se olvida y se vuelve a pedir la sesión sin empresa, para entrar con la única
+      // que tenga o preguntar con cuál trabajar.
+      const guardada = empresaGuardada();
+      if (guardada && (!tenantId || tenantId === guardada) && esEmpresaRechazada(error)) {
+        localStorage.removeItem(SESSION_KEY);
+        return null;
+      }
+      throw error;
+    });
+    if (!data) {
+      return cargarSesion(token, null, refreshToken);
     }
+
+    // Las empresas por las que llega a Zero-touch, en el orden del API: van al selector del menú
+    // y, mientras no haya elegido ninguna, a la pantalla para elegir.
+    const empresas = (data.empresas || []).map((e) => ({
+      id: e.id || undefined,
+      clientId: e.clientId || e.slug || 'cliente',
+      nombre: e.nombre || 'Empresa',
+      slug: e.slug || '',
+      oneTenantId: e.oneTenantId || '',
+      rol: e.rol,
+      zeroTouchCustomerName: e.zeroTouchCustomerName,
+      zeroTouchCustomerId: e.zeroTouchCustomerId,
+      samsungAvailable: e.samsungAvailable,
+      samsungCustomerId: e.samsungCustomerId,
+      platformType: e.platformType,
+    }));
+
+    const active = data.tenantActivo;
     if (!active) {
+      const elegibles = empresas.filter((e) => e.oneTenantId);
+      // Con una sola se entra con esa: el API resuelve sus plataformas en cuanto llega con
+      // X-Tenant-Id.
+      if (elegibles.length === 1 && elegibles[0].oneTenantId !== tenantId) {
+        return cargarSesion(token, elegibles[0].oneTenantId, refreshToken);
+      }
+      // Con varias y ninguna elegida se pregunta con cuál trabajar: nunca se abre una a ciegas.
+      if (elegibles.length > 1) {
+        setErrorText('');
+        setEleccionEmpresa({ accessToken: token, refreshToken, empresas: elegibles });
+        return null;
+      }
       throw new Error('Su usuario no tiene empresas con Zero-touch en Intechsys One.');
     }
 
@@ -835,18 +931,7 @@ function App() {
       oneTenantId: active.oneTenantId || tenantId || undefined,
       userEmail: data.usuario?.email || undefined,
       userName: data.usuario?.nombre || undefined,
-      availableTenants: (data.empresas || []).map((e) => ({
-        id: e.id || undefined,
-        clientId: e.clientId || e.slug || 'cliente',
-        nombre: e.nombre || 'Empresa',
-        slug: e.slug || '',
-        oneTenantId: e.oneTenantId || '',
-        zeroTouchCustomerName: e.zeroTouchCustomerName,
-        zeroTouchCustomerId: e.zeroTouchCustomerId,
-        samsungAvailable: e.samsungAvailable,
-        samsungCustomerId: e.samsungCustomerId,
-        platformType: e.platformType,
-      })),
+      availableTenants: empresas,
       zeroTouchAvailable,
       samsungAvailable,
       zeroTouchCustomerId,
@@ -861,6 +946,7 @@ function App() {
     };
 
     setEnrollmentPlatform(newSession.preferredEnrollment ?? 'zerotouch');
+    setEleccionEmpresa(null);
     setSession(newSession);
     localStorage.setItem(SESSION_KEY, JSON.stringify(newSession));
     return newSession;
@@ -916,24 +1002,32 @@ function App() {
       return;
     }
 
-    // Flujo 4: Sesión existente en localStorage
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) {
+    // Flujo 4: Sesión existente en localStorage. Se vuelve a cargar con su empresa antes de abrir
+    // la consola: así se comprueba que sigue siendo accesible (si no, cargarSesion entra con la
+    // única o pregunta con cuál trabajar) y llegan al día las empresas y plataformas.
+    const parsed = sesionPorRetomar();
+    if (!parsed) {
       return;
     }
-    try {
-      const parsed = JSON.parse(raw) as AuthSession;
-      if (parsed?.accessToken) {
+    cargarSesion(parsed.accessToken, parsed.oneTenantId, parsed.refreshToken)
+      .catch((err) => {
+        // La empresa guardada se descartó por no ser accesible y no se pudo seguir sin ella.
+        if (!localStorage.getItem(SESSION_KEY)) {
+          setErrorText(getErrorMessage(err));
+          return;
+        }
+        // Sin poder comprobarla (sin red, API caído, token vencido) se sigue con la guardada,
+        // como hasta ahora: el API no deja ver nada de una empresa a la que ya no tenga acceso.
         setSession(parsed);
         if (parsed.preferredEnrollment === 'samsung' || parsed.samsungAvailable) {
           setEnrollmentPlatform(
             parsed.preferredEnrollment === 'zerotouch' ? 'zerotouch' : 'samsung'
           );
         }
-      }
-    } catch {
-      localStorage.removeItem(SESSION_KEY);
-    }
+      })
+      .finally(() => {
+        setComprobandoSesion(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -1076,9 +1170,26 @@ function App() {
     void iniciarSSO(null, acabaDeSalir(), normalizedClientId);
   }
 
+  /** Abre la consola con la empresa elegida en la pantalla de entrada, igual que el selector del menú. */
+  function elegirEmpresa(oneTenantId: string) {
+    if (!eleccionEmpresa) return;
+    setIsBusy(true);
+    setErrorText('');
+    cargarSesion(eleccionEmpresa.accessToken, oneTenantId, eleccionEmpresa.refreshToken)
+      .catch((err) => {
+        setErrorText(getErrorMessage(err));
+      })
+      .finally(() => {
+        setIsBusy(false);
+      });
+  }
+
   function handleLogout() {
     marcarSalida();
-    if (session) void cerrarSesionOne(session.accessToken, session.refreshToken);
+    // También desde la pantalla para elegir empresa, donde aún no hay sesión de la consola.
+    const abierta = session ?? eleccionEmpresa;
+    if (abierta) void cerrarSesionOne(abierta.accessToken, abierta.refreshToken);
+    setEleccionEmpresa(null);
     setSession(null);
     setDevices([]);
     setDeviceSearch('');
@@ -1355,59 +1466,91 @@ function App() {
     </>
   );
 
+  // Marco de las pantallas sin sesión de la consola (ingreso, elegir empresa): sin menú.
+  const marcoEntrada = (contenido: ReactNode) => (
+    <main className={`app-shell ${isSamsungMode ? 'samsung-mode' : ''}`}>
+      <header className="barra-ingreso">
+        <SelectorTema />
+      </header>
+
+      {avisos}
+
+      {contenido}
+    </main>
+  );
+
+  // Varias empresas y ninguna indicada: se elige antes de abrir la consola.
+  if (!session && eleccionEmpresa) {
+    return marcoEntrada(
+      <EleccionEmpresa
+        producto="Zero-touch"
+        empresas={eleccionEmpresa.empresas}
+        ocupado={isBusy}
+        onElegir={elegirEmpresa}
+        onSalir={handleLogout}
+      />
+    );
+  }
+
+  // Comprobando la sesión guardada: solo la marca, sin el formulario de ingreso.
+  if (!session && comprobandoSesion) {
+    return marcoEntrada(
+      <section className="panel login-panel entrada-estrecha" aria-busy="true">
+        <div className="marca-entrada">
+          <LogoEntrada />
+        </div>
+        <p className="hint" role="status">
+          Abriendo la consola…
+        </p>
+      </section>
+    );
+  }
+
   // Sin sesión: la pantalla de ingreso por Client ID, sin menú.
   if (!session) {
-    return (
-      <main className={`app-shell ${isSamsungMode ? 'samsung-mode' : ''}`}>
-        <header className="barra-ingreso">
-          <SelectorTema />
-        </header>
-
-        {avisos}
-
-        <section className="panel login-panel">
-          <div className="marca-entrada">
-            <LogoEntrada />
-            <p className="producto">Zero-touch</p>
-            <h1>Console Web</h1>
-          </div>
-          <h2>Ingreso por cliente</h2>
-          <p>
-            Escriba su Client ID. Lo llevaremos a Intechsys One para que inicie sesión con su usuario,
-            y volverá aquí con su empresa abierta.
-          </p>
-          <form onSubmit={handleLogin} className="form-grid">
-            <label>
-              Client ID
-              <input
-                value={clientId}
-                onChange={(event) => setClientId(event.target.value)}
-                placeholder="1295751765"
-                inputMode="numeric"
-                autoComplete="off"
-                required
-              />
-            </label>
-            <button className="primary-btn" type="submit" disabled={isBusy}>
-              {isBusy ? 'Abriendo Intechsys One...' : 'Continuar con Intechsys One'}
-            </button>
-          </form>
-          <p className="hint" style={{ marginTop: '1rem', textAlign: 'center' }}>
-            ¿Entra a varias empresas?{' '}
-            <button
-              type="button"
-              className="link-btn"
-              onClick={() => {
-                setIsBusy(true);
-                void iniciarSSO(null, acabaDeSalir());
-              }}
-              disabled={isBusy}
-            >
-              Entrar con su cuenta de One y elegir la empresa
-            </button>
-          </p>
-        </section>
-      </main>
+    return marcoEntrada(
+      <section className="panel login-panel">
+        <div className="marca-entrada">
+          <LogoEntrada />
+          <p className="producto">Zero-touch</p>
+          <h1>Console Web</h1>
+        </div>
+        <h2>Ingreso por cliente</h2>
+        <p>
+          Escriba su Client ID. Lo llevaremos a Intechsys One para que inicie sesión con su usuario,
+          y volverá aquí con su empresa abierta.
+        </p>
+        <form onSubmit={handleLogin} className="form-grid">
+          <label>
+            Client ID
+            <input
+              value={clientId}
+              onChange={(event) => setClientId(event.target.value)}
+              placeholder="1295751765"
+              inputMode="numeric"
+              autoComplete="off"
+              required
+            />
+          </label>
+          <button className="primary-btn" type="submit" disabled={isBusy}>
+            {isBusy ? 'Abriendo Intechsys One...' : 'Continuar con Intechsys One'}
+          </button>
+        </form>
+        <p className="hint" style={{ marginTop: '1rem', textAlign: 'center' }}>
+          ¿Entra a varias empresas?{' '}
+          <button
+            type="button"
+            className="link-btn"
+            onClick={() => {
+              setIsBusy(true);
+              void iniciarSSO(null, acabaDeSalir());
+            }}
+            disabled={isBusy}
+          >
+            Entrar con su cuenta de One y elegir la empresa
+          </button>
+        </p>
+      </section>
     );
   }
 
