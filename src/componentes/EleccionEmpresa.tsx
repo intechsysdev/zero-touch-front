@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Building2, ChevronRight, LoaderCircle, LogOut } from 'lucide-react';
 import { PRODUCTO } from '../producto';
 import { MarcoPaso } from './MarcoPaso';
+import { nombreRol } from '../roles';
 
 /** Una empresa a la que el usuario llega por One. */
 export type EmpresaElegible = {
@@ -24,24 +25,16 @@ type Props = {
   onSalir: () => void;
 };
 
-/** Los roles de One con los nombres que usa el portal. */
-const ROLES_ONE: Record<string, string> = {
-  owner: 'Propietario',
-  admin: 'Administrador',
-  member: 'Miembro',
-  viewer: 'Observador',
-};
-
 /** Segunda línea de cada empresa: el rol en One o, sin él, el slug para distinguirlas. */
 function detalleEmpresa(empresa: EmpresaElegible): string | null {
-  if (empresa.rol) return `Rol en ONE: ${ROLES_ONE[empresa.rol.toLowerCase()] ?? empresa.rol}`;
+  if (empresa.rol) return `Rol en ONE: ${nombreRol(empresa.rol)}`;
   return empresa.slug || null;
 }
 
 /**
  * Pantalla para elegir empresa al entrar con INTECHSYS ONE, cuando el usuario tiene varias y
  * ninguna vino indicada. Es la de WorkLog, sin menú: la consola no se abre (ni pide nada de
- * ninguna empresa) hasta elegir. Después se cambia desde el selector del menú.
+ * ninguna empresa) hasta elegir. Después se cambia desde el menú de la cuenta.
  */
 export function EleccionEmpresa({ empresas, ocupado, aviso, onElegir, onSalir }: Props) {
   const [elegida, setElegida] = useState<string | null>(null);

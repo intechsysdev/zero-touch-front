@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
-import { LogOut, Menu, X } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { PRODUCTO } from '../producto';
 import { MarcaProducto } from './Marca';
-import { SelectorTema } from './SelectorTema';
+import { MenuUsuario } from './MenuUsuario';
+import type { OpcionEmpresa } from './MenuUsuario';
+import { useTema } from '../tema/TemaContexto';
 
 /** Una entrada del menú: un enlace (href) o un botón que hace algo (onElegir). */
 export type EntradaMenu = {
@@ -23,13 +24,16 @@ export type GrupoMenu = {
 };
 
 type Props = {
-  /** Empresa activa, bajo la marca. */
-  empresa?: string;
-  /** Con varias empresas, el selector va bajo la marca a todo el ancho. */
-  selectorEmpresa?: ReactNode;
   grupos: GrupoMenu[];
-  /** Correo o nombre del usuario, en el pie. */
-  usuario?: string;
+  /** Quién entró: su nombre o, si One no lo dio, su correo. */
+  nombre: string;
+  correo?: string;
+  /** Segunda línea del menú de la cuenta: «Rol · Empresa». */
+  detalle: string;
+  /** Las empresas entre las que puede cambiar; con una sola, la sección no aparece. */
+  empresas: OpcionEmpresa[];
+  empresaActiva?: string;
+  onElegirEmpresa: (id: string) => void;
   onSalir: () => void;
 };
 
@@ -37,8 +41,8 @@ type Props = {
 const ESCRITORIO = '(min-width: 1024px)';
 
 /**
- * Marco de navegación de la consola, igual al del portal de One. En escritorio el panel va fijo a
- * la izquierda; en pantallas angostas hay una barra arriba y el botón abre el mismo panel como
+ * Marco de navegación de la consola, igual al de WorkLog: la marca, las secciones y, al pie, el
+ * menú de la cuenta (empresa, tema y salida). En escritorio el panel va fijo a la izquierda; en pantallas angostas hay una barra arriba y el botón abre el mismo panel como
  * cajón. El cajón es un <dialog> modal: Escape lo cierra y el foco no se escapa, de forma nativa.
  */
 export function MenuLateral(props: Props) {
@@ -51,8 +55,7 @@ export function MenuLateral(props: Props) {
     if (!cajon || cajon.open) return;
     cajon.showModal();
     setAbierto(true);
-    // showModal enfoca lo primero que encuentra (el selector de empresa, si lo hay): se lleva a
-    // la primera entrada del menú.
+    // showModal enfoca lo primero que encuentra: se lleva a la primera entrada del menú.
     cajon.querySelector<HTMLElement>('.menu-entrada')?.focus();
   }
 
@@ -120,62 +123,63 @@ export function MenuLateral(props: Props) {
   );
 }
 
-/** Contenido del panel: marca, navegación y pie. Se dibuja en el panel fijo y en el cajón. */
+/** Contenido del panel: marca, navegación y menú de la cuenta. Se dibuja en el panel fijo y en el cajón. */
 function PanelMenu({
-  empresa,
-  selectorEmpresa,
   grupos,
-  usuario,
+  nombre,
+  correo,
+  detalle,
+  empresas,
+  empresaActiva,
+  onElegirEmpresa,
   onSalir,
   alElegir,
 }: Props & { alElegir?: () => void }) {
   // El panel se dibuja dos veces (fijo y cajón): los ids tienen que ser de cada copia.
   const id = useId();
+  const { oscuro, alternar } = useTema();
 
   return (
     <div className="menu-panel">
-      <div className="menu-marca">
-        <MarcaProducto className="menu-marca-fila" />
-        {empresa ? <p className="menu-empresa">{empresa}</p> : null}
-        {selectorEmpresa}
-      </div>
+      <MarcaProducto className="menu-marca" />
 
-      <nav className="menu-navegacion" aria-label="Principal">
-        {grupos.map((grupo, indice) => {
-          const idTitulo = `${id}-grupo-${indice}`;
-          return (
-            <div
-              key={grupo.titulo ?? indice}
-              className="menu-grupo"
-              role="group"
-              aria-labelledby={grupo.titulo ? idTitulo : undefined}
-            >
-              {grupo.titulo ? (
-                <p id={idTitulo} className="menu-grupo-titulo">
-                  {grupo.titulo}
-                </p>
-              ) : null}
+      <div className="menu-cuerpo">
+        <nav className="menu-navegacion" aria-label="Principal">
+          {grupos.map((grupo, indice) => {
+            const idTitulo = `${id}-grupo-${indice}`;
+            return (
+              <div
+                key={grupo.titulo ?? indice}
+                className="menu-grupo"
+                role="group"
+                aria-labelledby={grupo.titulo ? idTitulo : undefined}
+              >
+                {grupo.titulo ? (
+                  <p id={idTitulo} className="menu-grupo-titulo">
+                    {grupo.titulo}
+                  </p>
+                ) : null}
 
-              {grupo.entradas.map((entrada) => (
-                <Entrada key={entrada.nombre} entrada={entrada} alElegir={alElegir} />
-              ))}
-            </div>
-          );
-        })}
-      </nav>
+                {grupo.entradas.map((entrada) => (
+                  <Entrada key={entrada.nombre} entrada={entrada} alElegir={alElegir} />
+                ))}
+              </div>
+            );
+          })}
+        </nav>
 
-      <div className="menu-pie">
-        {usuario ? (
-          <p className="menu-usuario" title={usuario}>
-            {usuario}
-          </p>
-        ) : null}
-        <div className="menu-pie-fila">
-          <SelectorTema />
-          <button className="boton-salir" onClick={onSalir} type="button" title="Cerrar sesión">
-            <LogOut aria-hidden />
-            <span>Salir</span>
-          </button>
+        <div className="menu-pie">
+          <MenuUsuario
+            nombre={nombre}
+            correo={correo ?? null}
+            detalle={detalle}
+            empresas={empresas}
+            empresaActiva={empresaActiva ?? null}
+            alElegirEmpresa={onElegirEmpresa}
+            oscuro={oscuro}
+            alAlternarTema={alternar}
+            alSalir={onSalir}
+          />
         </div>
       </div>
     </div>

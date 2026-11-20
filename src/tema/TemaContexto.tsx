@@ -13,9 +13,15 @@ const CLAVE = 'zerotouch.tema';
 interface Contexto {
   tema: Tema;
   elegir: (tema: Tema) => void;
+  /** El tema que se ve: el elegido o, en "sistema", el del sistema. */
+  oscuro: boolean;
+  /** Pasa al contrario del que se ve, como el menú de WorkLog («Usar tema claro/oscuro»). */
+  alternar: () => void;
 }
 
 const TemaContexto = createContext<Contexto | null>(null);
+
+const consultaOscuro = () => window.matchMedia('(prefers-color-scheme: dark)');
 
 function estampar(tema: Tema) {
   const raiz = document.documentElement;
@@ -53,7 +59,18 @@ export function ProveedorTema({ children }: { children: ReactNode }) {
   // monte con un valor distinto al que quedó en el atributo.
   useEffect(() => estampar(tema), [tema]);
 
-  const valor = useMemo<Contexto>(() => ({ tema, elegir }), [tema, elegir]);
+  const [sistemaOscuro, setSistemaOscuro] = useState(() => consultaOscuro().matches);
+  useEffect(() => {
+    const consulta = consultaOscuro();
+    const alCambiar = () => setSistemaOscuro(consulta.matches);
+    consulta.addEventListener('change', alCambiar);
+    return () => consulta.removeEventListener('change', alCambiar);
+  }, []);
+
+  const oscuro = tema === 'sistema' ? sistemaOscuro : tema === 'oscuro';
+  const alternar = useCallback(() => elegir(oscuro ? 'claro' : 'oscuro'), [elegir, oscuro]);
+
+  const valor = useMemo<Contexto>(() => ({ tema, elegir, oscuro, alternar }), [tema, elegir, oscuro, alternar]);
 
   return <TemaContexto.Provider value={valor}>{children}</TemaContexto.Provider>;
 }

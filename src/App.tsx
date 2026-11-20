@@ -18,6 +18,7 @@ import { ErrorBoundary } from './componentes/ErrorBoundary';
 import { EleccionEmpresa } from './componentes/EleccionEmpresa';
 import { AvisoPaso, MarcoPaso, PasoEnCurso } from './componentes/MarcoPaso';
 import { PRODUCTO } from './producto';
+import { nombreRol } from './roles';
 import { getSamsungFamily } from './samsungModels';
 
 type AuthSession = {
@@ -924,7 +925,7 @@ function App() {
       return cargarSesion(token, null, refreshToken);
     }
 
-    // Las empresas por las que llega a Enroll, en el orden del API: van al selector del menú
+    // Las empresas por las que llega a Enroll, en el orden del API: van al menú de la cuenta
     // y, mientras no haya elegido ninguna, a la pantalla para elegir.
     const empresas = (data.empresas || []).map((e) => ({
       id: e.id || undefined,
@@ -1216,7 +1217,7 @@ function App() {
     iniciarSSO(null, acabaDeSalir()).catch((err) => setErrorText(getErrorMessage(err)));
   }
 
-  /** Abre la consola con la empresa elegida en la pantalla de entrada, igual que el selector del menú. */
+  /** Abre la consola con la empresa elegida en la pantalla de entrada, igual que el menú de la cuenta. */
   function elegirEmpresa(oneTenantId: string) {
     if (!eleccionEmpresa) return;
     setIsBusy(true);
@@ -1599,7 +1600,9 @@ function App() {
     );
   }
 
-  const variasEmpresas = Boolean(session.availableTenants && session.availableTenants.length > 1);
+  // Lo que dice el menú de la cuenta bajo el nombre: el rol en One y la empresa abierta.
+  const rolActivo = session.availableTenants?.find((t) => t.oneTenantId === session.oneTenantId)?.rol;
+  const empresaActiva = session.companyName || 'Consola Web';
 
   // La plataforma de enrolamiento se elige en el menú; lo demás son anclas a esta misma página.
   const gruposMenu: GrupoMenu[] = [
@@ -1633,33 +1636,15 @@ function App() {
   return (
     <div className={`app-shell con-menu ${isSamsungMode ? 'samsung-mode' : ''}`}>
       <MenuLateral
-        // Con varias empresas el selector ya dice cuál está abierta: el nombre no se repite.
-        empresa={variasEmpresas ? undefined : session.companyName || 'Consola Web'}
-        selectorEmpresa={
-          variasEmpresas ? (
-            <select
-              className="selector-empresa"
-              aria-label="Empresa activa"
-              value={session.oneTenantId || ''}
-              onChange={(e) => {
-                const selected = session.availableTenants?.find(
-                  (t) => t.oneTenantId === e.target.value
-                );
-                if (selected) {
-                  void cargarSesion(session.accessToken, selected.oneTenantId, session.refreshToken);
-                }
-              }}
-            >
-              {session.availableTenants?.map((t) => (
-                <option key={t.oneTenantId} value={t.oneTenantId}>
-                  {t.nombre}
-                </option>
-              ))}
-            </select>
-          ) : null
-        }
         grupos={gruposMenu}
-        usuario={session.userEmail || session.userName}
+        nombre={session.userName || session.userEmail || 'Tu cuenta'}
+        correo={session.userEmail}
+        detalle={rolActivo ? `${nombreRol(rolActivo)} · ${empresaActiva}` : empresaActiva}
+        empresas={(session.availableTenants ?? []).map((t) => ({ id: t.oneTenantId, nombre: t.nombre }))}
+        empresaActiva={session.oneTenantId}
+        onElegirEmpresa={(oneTenantId) => {
+          void cargarSesion(session.accessToken, oneTenantId, session.refreshToken);
+        }}
         onSalir={handleLogout}
       />
 
