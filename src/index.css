@@ -219,25 +219,27 @@ p {
    Menú lateral (consola con sesión)
 
    El mismo del portal de One: en escritorio, panel fijo a la izquierda y el
-   contenido a la derecha; en pantallas angostas, una barra arriba y el mismo
-   panel como cajón (<dialog> modal). Vive dentro de .app-shell para tomar el
-   acento del modo Samsung.
+   contenido a la derecha; hasta 900 px el panel es la barra de arriba y el
+   botón lo despliega debajo, como en WorkLog. Vive dentro de .app-shell para
+   tomar el acento del modo Samsung.
    ========================================================================== */
 
 .app-shell.con-menu {
   /* El ancho del panel de WorkLog: la marca del producto ("Enrolamiento automático") cabe en una línea. */
   --menu-ancho: 18rem;
-  --barra-movil-alto: 60px;
+  /* Alto de la barra de arriba en pantallas angostas, como la de WorkLog. */
+  --barra-movil-alto: 69px;
 
   max-width: none;
   margin: 0;
-  padding: var(--barra-movil-alto) 0 0;
+  padding: 0;
 }
 
 .contenido {
   max-width: 1140px;
   margin: 0 auto;
   padding: 24px 16px 56px;
+  outline: none;
 }
 
 /* Las anclas del menú dejan aire sobre el título; en móvil, además, la barra fija no lo tapa. */
@@ -255,12 +257,12 @@ p {
    marca, las secciones y, al pie, el menú de la cuenta. Los colores de WorkLog van en tokens
    propios (--wl-*), con la misma regla de tres estados de arriba, y los de la marca del producto
    se redefinen con ellos. */
-.menu-lateral,
-.menu-cajon {
+.menu-lateral {
   --wl-elevada: #ffffff;
   --wl-flotante: #ffffff;
   --wl-hundida: #f5f5f4;
   --wl-linea: #e2e2e1;
+  --wl-linea-fuerte: #c9c9c8;
   --wl-tinta: #1e1f1d;
   --wl-tinta-media: #3c3c3b;
   --wl-tinta-suave: #5a5958;
@@ -275,11 +277,12 @@ p {
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) :is(.menu-lateral, .menu-cajon) {
+  :root:not([data-theme="light"]) .menu-lateral {
     --wl-elevada: #222220;
     --wl-flotante: #2a2a28;
     --wl-hundida: #1c1c1b;
     --wl-linea: #353533;
+    --wl-linea-fuerte: #4d4c4a;
     --wl-tinta: #f3f2ef;
     --wl-tinta-media: #d2d0cc;
     --wl-tinta-suave: #a3a19d;
@@ -291,11 +294,12 @@ p {
   }
 }
 
-:root[data-theme="dark"] :is(.menu-lateral, .menu-cajon) {
+:root[data-theme="dark"] .menu-lateral {
   --wl-elevada: #222220;
   --wl-flotante: #2a2a28;
   --wl-hundida: #1c1c1b;
   --wl-linea: #353533;
+  --wl-linea-fuerte: #4d4c4a;
   --wl-tinta: #f3f2ef;
   --wl-tinta-media: #d2d0cc;
   --wl-tinta-suave: #a3a19d;
@@ -307,28 +311,88 @@ p {
 }
 
 .menu-lateral {
-  display: none;
-  position: fixed;
-  inset: 0 auto 0 0;
+  position: sticky;
+  top: 0;
   z-index: 30;
-  width: var(--menu-ancho);
-  border-right: 1px solid var(--wl-linea);
-  background: var(--wl-elevada);
-}
-
-.menu-panel {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  height: 100%;
-  padding: 24px 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--wl-linea);
+  background: var(--wl-elevada);
   color: var(--wl-tinta);
   font-size: 14px;
   line-height: 1.5;
 }
 
-.menu-marca {
+.menu-cabeza {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 0 4px;
+}
+
+/* El botón que despliega el panel: solo en pantallas angostas. */
+.menu-boton {
+  appearance: none;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid var(--wl-linea-fuerte);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--wl-tinta);
+  cursor: pointer;
+}
+
+.menu-boton svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Donde la marca completa ya no cabe junto al botón, queda sin la descripción. */
+@media (max-width: 339px) {
+  .menu-cabeza .marca-producto-separador,
+  .menu-cabeza .marca-producto-descripcion {
+    display: none;
+  }
+}
+
+/* Enlace para saltar el menú con el teclado: solo se ve al recibir el foco. */
+.saltar {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.saltar:focus {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 50;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  clip: auto;
+  border-radius: 10px;
+  background: #af1839;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-decoration: none;
 }
 
 /* Las secciones se desplazan si no caben; el menú de la cuenta queda siempre al pie. */
@@ -407,7 +471,7 @@ p {
 }
 
 .menu-entrada:focus-visible,
-.boton-menu:focus-visible {
+.menu-boton:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -507,7 +571,7 @@ p {
   min-width: 224px;
   margin-bottom: 8px;
   padding: 4px;
-  overflow: hidden;
+  overflow: hidden auto;
   border: 1px solid var(--wl-linea);
   border-radius: 12px;
   background: var(--wl-flotante);
@@ -609,111 +673,20 @@ p {
   background: var(--wl-critico-tenue);
 }
 
-/* Pantallas angostas: barra fija arriba con el botón que abre el cajón */
-.barra-movil {
-  position: fixed;
-  inset: 0 0 auto;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: var(--barra-movil-alto);
-  padding: 0 16px 0 10px;
-  border-bottom: 1px solid var(--line);
-  background: var(--paper);
-}
+/* Hasta 900 px, como WorkLog: el panel se despliega bajo la barra y solo se ve abierto. */
+@media (max-width: 900px) {
+  .menu-cuerpo {
+    max-height: calc(100dvh - 4.5rem);
+    padding-top: 16px;
+  }
 
-.barra-movil-corta {
-  display: none;
-  align-items: center;
-  gap: 12px;
-}
-
-/* Donde la marca completa ya no cabe junto al botón, la compacta con el nombre del producto. */
-@media (max-width: 339px) {
-  .barra-movil .barra-movil-marca {
+  .menu-cuerpo.menu-plegado {
     display: none;
   }
-
-  .barra-movil-corta {
-    display: flex;
-  }
 }
 
-.barra-movil-nombre {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.boton-menu {
-  display: inline-grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.boton-menu:hover {
-  background: var(--surface-2);
-  color: var(--ink);
-}
-
-.boton-menu svg {
-  width: 20px;
-  height: 20px;
-}
-
-/* El cajón: el mismo panel, desde la izquierda y sobre un fondo oscurecido */
-.menu-cajon {
-  position: fixed;
-  inset: 0 auto 0 0;
-  width: var(--menu-ancho);
-  /* Desde 320 px el cajón conserva el ancho del panel y la marca no se parte en dos líneas. */
-  max-width: calc(100vw - 32px);
-  height: 100%;
-  max-height: none;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  border: 0;
-  border-right: 1px solid var(--wl-linea);
-  background: var(--wl-elevada);
-  color: var(--wl-tinta);
-}
-
-.menu-cajon::backdrop {
-  background: rgba(30, 31, 29, 0.5);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .menu-cajon[open] {
-    animation: menu-entra 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .menu-cajon[open]::backdrop {
-    animation: menu-fondo 0.22s ease;
-  }
-}
-
-@keyframes menu-entra {
-  from {
-    transform: translateX(-100%);
-  }
-}
-
-@keyframes menu-fondo {
-  from {
-    opacity: 0;
-  }
-}
-
-/* Escritorio: el panel fijo a la vista, sin barra ni cajón; el contenido corre a la derecha */
-@media (min-width: 1024px) {
+/* Desde 901 px: el panel fijo a la izquierda y el contenido a su derecha */
+@media (min-width: 901px) {
   .app-shell.con-menu {
     padding: 0 0 0 var(--menu-ancho);
   }
@@ -727,10 +700,16 @@ p {
   }
 
   .menu-lateral {
-    display: block;
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: var(--menu-ancho);
+    gap: 24px;
+    padding: 24px 16px;
+    border-right: 1px solid var(--wl-linea);
+    border-bottom: 0;
   }
 
-  .barra-movil {
+  .menu-boton {
     display: none;
   }
 }

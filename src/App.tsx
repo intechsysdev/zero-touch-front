@@ -1648,7 +1648,7 @@ function App() {
         onSalir={handleLogout}
       />
 
-      <main id="contenido" className="contenido">
+      <main id="contenido" tabIndex={-1} className="contenido">
         {avisos}
 
         {/* El cambio de plataforma está en el menú, fuera de esta frontera: con la key, elegir otra

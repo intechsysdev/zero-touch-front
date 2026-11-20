@@ -39,6 +39,7 @@ export function MenuUsuario({
   nombre, correo, detalle, empresas, empresaActiva, alElegirEmpresa, oscuro, alAlternarTema, alSalir,
 }: Props) {
   const [abierto, setAbierto] = useState(false);
+  const [altoMaximo, setAltoMaximo] = useState<number>();
   const contenedor = useRef<HTMLDivElement>(null);
   const boton = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -92,7 +93,13 @@ export function MenuUsuario({
         aria-haspopup="menu"
         aria-expanded={abierto}
         aria-controls={abierto ? id : undefined}
-        onClick={() => setAbierto((valor) => !valor)}
+        onClick={() => {
+          // La lista sale hacia arriba: con muchas empresas, o con poco espacio encima, se
+          // desplaza por dentro en vez de salirse de la ventana.
+          const arriba = boton.current?.getBoundingClientRect().top ?? 0;
+          setAltoMaximo(Math.max(160, arriba - 12));
+          setAbierto((valor) => !valor);
+        }}
       >
         <span className="menu-usuario-avatar" aria-hidden>{iniciales(nombre)}</span>
         <span className="menu-usuario-texto">
@@ -103,7 +110,7 @@ export function MenuUsuario({
       </button>
 
       {abierto && (
-        <div id={id} role="menu" className="menu-usuario-lista" onKeyDown={alTeclearEnMenu}>
+        <div id={id} role="menu" className="menu-usuario-lista" style={{ maxHeight: altoMaximo }} onKeyDown={alTeclearEnMenu}>
           <div className="menu-usuario-cabeza">
             <p className="menu-usuario-nombre">{nombre}</p>
             {correo && correo !== nombre && <p className="menu-usuario-detalle">{correo}</p>}
