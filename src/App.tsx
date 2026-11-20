@@ -701,7 +701,6 @@ function App() {
   const [bulkIdentifiersText, setBulkIdentifiersText] = useState('');
   const [bulkManufacturer, setBulkManufacturer] = useState('');
   const [bulkModel, setBulkModel] = useState('');
-  const [bulkConfigurationId, setBulkConfigurationId] = useState('');
   const [availableManufacturers, setAvailableManufacturers] = useState<string[]>([]);
   const [modelsByManufacturer, setModelsByManufacturer] = useState<Record<string, string[]>>({});
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -711,9 +710,7 @@ function App() {
   const parsedIdentifiers = useMemo(() => parseIdentifiers(bulkIdentifiersText), [bulkIdentifiersText]);
   const canCreate =
     parsedIdentifiers.length > 0 &&
-    (isSamsungMode
-      ? bulkConfigurationId.trim().length > 0
-      : identifierType === 'imei' || (bulkManufacturer.trim().length > 0 && bulkModel.trim().length > 0));
+    (identifierType === 'imei' || (bulkManufacturer.trim().length > 0 && bulkModel.trim().length > 0));
 
   const brandStats = useMemo(() => {
     if (devices.length === 0) {
@@ -784,7 +781,7 @@ function App() {
   }, [hoveredBrand, brandStats.items]);
 
   const imeiStats = useMemo(() => {
-    if (identifierType !== 'imei' && !isSamsungMode) {
+    if (identifierType !== 'imei') {
       return null;
     }
     if (parsedIdentifiers.length === 0) {
@@ -795,7 +792,7 @@ function App() {
       invalidCount: invalidList.length,
       invalidSamples: invalidList.slice(0, 3),
     };
-  }, [parsedIdentifiers, identifierType, isSamsungMode]);
+  }, [parsedIdentifiers, identifierType]);
 
   const selectedModels = useMemo(
     () => modelsByManufacturer[bulkManufacturer] || [],
@@ -1092,12 +1089,7 @@ function App() {
       return;
     }
     void loadDevices(true);
-    if (isSamsungMode) {
-      setAvailableManufacturers([]);
-      setModelsByManufacturer({});
-    } else {
-      void loadIdentifierOptions(true);
-    }
+    void loadIdentifierOptions(true);
   }, [session, enrollmentPlatform]);
 
   const activeCustomerId =
@@ -1147,7 +1139,10 @@ function App() {
       const manufacturers = Array.isArray(data.manufacturers)
         ? data.manufacturers.filter(Boolean)
         : [];
-      setAvailableManufacturers(manufacturers);
+      const finalManufacturers = manufacturers.includes('Samsung')
+        ? manufacturers
+        : ['Samsung', ...manufacturers];
+      setAvailableManufacturers(finalManufacturers);
       setModelsByManufacturer(data.modelsByManufacturer || {});
     } catch (error) {
       setErrorText(getErrorMessage(error));
@@ -1264,12 +1259,15 @@ function App() {
     }
 
     if (isSamsungMode) {
-      const csv = `imei\n354612454006911\n354612454006922\n`;
+      const csv =
+        identifierType === 'imei'
+          ? `imei\n354612454006911\n354612454006922\n`
+          : `serial\nR5CX61Z1W1D\nR9TY70AF9ZL\n`;
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `samsung-knox-template.csv`;
+      link.download = `samsung-knox-template-${identifierType}.csv`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -1331,7 +1329,7 @@ function App() {
     // 1. Verificación de campo en blanco
     if (bulkIdentifiersText.trim().length === 0 || parsedIdentifiers.length === 0) {
       setErrorText(
-        identifierType === 'imei' || isSamsungMode
+        identifierType === 'imei'
           ? 'El campo de IMEI está en blanco. Por favor ingrese al menos un IMEI.'
           : 'El campo de identificadores está en blanco. Por favor ingrese al menos un número de serie.'
       );
@@ -1339,7 +1337,7 @@ function App() {
     }
 
     // 2. Validación de formato de IMEI (si hay uno mal formado)
-    if (isSamsungMode || identifierType === 'imei') {
+    if (identifierType === 'imei') {
       const invalidImeis: string[] = [];
       for (const id of parsedIdentifiers) {
         const val = id.trim();
@@ -1358,23 +1356,20 @@ function App() {
       }
     }
 
-    if (!isSamsungMode && identifierType === 'serial' && (!bulkManufacturer.trim() || !bulkModel.trim())) {
+    if (identifierType === 'serial' && (!bulkManufacturer.trim() || !bulkModel.trim())) {
       setErrorText('Para serial debes indicar marca y modelo.');
       return;
     }
 
-    if (isSamsungMode && !bulkConfigurationId.trim()) {
-      setErrorText('Para Samsung debes enviar Profile ID.');
-      return;
-    }
-
     const devicesPayload =
-      isSamsungMode || identifierType === 'imei'
-        ? parsedIdentifiers.map((value) => ({ imei: value }))
+      identifierType === 'imei'
+        ? parsedIdentifiers.map((value) => ({ imei: value, meidImei: value }))
         : parsedIdentifiers.map((value) => ({
             serialNumber: value,
             manufacturer: bulkManufacturer.trim(),
             model: bulkModel.trim(),
+            meidImei: value,
+            imei: value,
           }));
 
     setIsBusy(true);
@@ -1388,9 +1383,8 @@ function App() {
           customerId: isSamsungMode
             ? (session.samsungCustomerId || undefined)
             : (session.zeroTouchCustomerId || activeCustomerId || undefined),
-          identifierType: isSamsungMode ? 'imei' : identifierType,
-          profileId: isSamsungMode ? bulkConfigurationId.trim() : undefined,
-          configurationId: isSamsungMode ? undefined : (bulkConfigurationId.trim() || undefined),
+          identifierType,
+          profileId: isSamsungMode ? '' : undefined,
           devices: devicesPayload,
         }),
       });
@@ -1669,7 +1663,7 @@ function App() {
               onClick={() => void loadDevices(true)}
               disabled={isBusy}
             >
-              {isBusy ? 'Sincronizando...' : 'Force Sync'}
+              {isBusy ? 'Sincronizando...' : 'Sincronizar'}
             </button>
           </section>
 
@@ -1689,8 +1683,12 @@ function App() {
                   <button
                     className={identifierType === 'serial' ? 'tab-btn active' : 'tab-btn'}
                     type="button"
-                    disabled={isSamsungMode}
-                    onClick={() => setIdentifierType('serial')}
+                    onClick={() => {
+                      setIdentifierType('serial');
+                      if (isSamsungMode && !bulkManufacturer) {
+                        setBulkManufacturer('Samsung');
+                      }
+                    }}
                   >
                     Serial + Marca + Modelo
                   </button>
@@ -1761,7 +1759,7 @@ function App() {
                   rows={6}
                 />
               </label>
-              {!isSamsungMode && identifierType === 'serial' ? (
+              {identifierType === 'serial' ? (
                 <label>
                   Marca
                   <input
@@ -1777,7 +1775,7 @@ function App() {
                   </datalist>
                 </label>
               ) : null}
-              {!isSamsungMode && identifierType === 'serial' ? (
+              {identifierType === 'serial' ? (
                 <label>
                   Modelo
                   <input
@@ -1793,14 +1791,6 @@ function App() {
                   </datalist>
                 </label>
               ) : null}
-              <label>
-                {isSamsungMode ? 'Samsung Profile ID (obligatorio)' : 'Configuration ID (opcional)'}
-                <input
-                  value={bulkConfigurationId}
-                  onChange={(event) => setBulkConfigurationId(event.target.value)}
-                  placeholder={isSamsungMode ? 'KNOX_PROFILE_001' : '123456789'}
-                />
-              </label>
               <button className="primary-btn" type="submit" disabled={!canCreate || isBusy}>
                 {isBusy ? 'Procesando...' : isSamsungMode ? 'Cargar lote en Samsung Knox' : 'Cargar lote en Zero-touch'}
               </button>
